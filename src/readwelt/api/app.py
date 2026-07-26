@@ -149,6 +149,64 @@ def create_app(
             raise request_error(exc) from exc
         return to_jsonable(result)
 
+    @app.post("/v1/agent-sessions", status_code=status.HTTP_202_ACCEPTED)
+    async def start_agent_session(payload: dict[str, Any]) -> Any:
+        source = str(payload.get("source_or_document_id", "")).strip()
+        if not source:
+            raise request_error(ValueError("source_or_document_id is required"))
+        candidate = Path(source)
+        if candidate.exists():
+            try:
+                ensure_within_project(root.parent, candidate)
+            except ValueError as exc:
+                raise request_error(exc) from exc
+        try:
+            return await agent.start(
+                source,
+                purpose=str(payload.get("purpose", "完整逆向阅读")),
+                token_budget=(
+                    int(payload["token_budget"])
+                    if payload.get("token_budget") is not None
+                    else None
+                ),
+                idempotency_key=(
+                    str(payload["idempotency_key"])
+                    if payload.get("idempotency_key") is not None
+                    else None
+                ),
+            )
+        except ProviderContractError as exc:
+            raise request_error(exc) from exc
+
+    @app.get("/v1/agent-sessions/{run_id}")
+    async def get_agent_session(run_id: str) -> Any:
+        try:
+            return await agent.current(run_id)
+        except ProviderContractError as exc:
+            raise request_error(exc) from exc
+
+    @app.post("/v1/agent-sessions/{run_id}/turns")
+    async def submit_agent_turn(run_id: str, payload: dict[str, Any]) -> Any:
+        candidate = payload.get("candidate")
+        if not isinstance(candidate, dict):
+            raise request_error(ValueError("candidate must be an object"))
+        try:
+            return await agent.advance(
+                run_id,
+                candidate,
+                agent_name=str(payload.get("agent_name", "")),
+                model=(
+                    str(payload["model"]) if payload.get("model") is not None else None
+                ),
+                agent_provenance=(
+                    payload["agent_provenance"]
+                    if isinstance(payload.get("agent_provenance"), dict)
+                    else None
+                ),
+            )
+        except ProviderContractError as exc:
+            raise request_error(exc) from exc
+
     @app.get("/v1/runs/{run_id}")
     async def get_run_status(run_id: str) -> Any:
         return to_jsonable(await invoke(active_service, "get_run_status", run_id))

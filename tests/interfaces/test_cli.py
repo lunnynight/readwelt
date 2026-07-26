@@ -95,3 +95,33 @@ def test_cli_integrates_with_real_application_facade(tmp_path) -> None:
     assert result["execution_status"] == "pending"
     assert result["current_task"] == "awaiting_agent:stage_1_mainline"
     assert service.get_run_status(result["run_id"]).run_id == result["run_id"]
+
+
+def test_cli_exposes_host_neutral_agent_turn(tmp_path) -> None:
+    source = tmp_path / "article.txt"
+    source.write_text("CLI Agent 底座。", encoding="utf-8")
+    project = tmp_path / ".readwelt"
+    service = ReadweltApplicationService(
+        project,
+        ingestion_backend="plain_text",
+        candidate_providers=(),
+    )
+    output = io.StringIO()
+
+    exit_code = main(
+        [
+            "agent-start",
+            str(source),
+            "--idempotency-key",
+            "cli-agent-turn",
+            "--json",
+        ],
+        service=service,
+        stdout=output,
+    )
+    turn = json.loads(output.getvalue())
+
+    assert exit_code == 0
+    assert turn["action"] == "generate_stage_candidate"
+    assert turn["stage"] == "stage_1_mainline"
+    assert turn["request"]["response_schema"]["type"] == "object"

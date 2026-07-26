@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from readwelt.storage import ManifestStore, ProjectLayout
@@ -38,7 +39,7 @@ class ExternalAgentMailboxProvider:
         request: StageRequest,
         response_schema: JsonSchema,
     ) -> StageCandidate:
-        del response_schema
+        request = replace(request, response_schema=dict(response_schema))
         request = self._bind_request_digest(request)
         candidate_path = self._candidate_path(request.run_id, request.stage)
         if candidate_path.exists():
@@ -80,6 +81,33 @@ class ExternalAgentMailboxProvider:
             return existing
         self._manifests.write(path, candidate.to_dict())
         return candidate
+
+    def reject(self, run_id: str, stage: str, reason: str) -> None:
+        """Archive a rejected candidate so the same request can be retried."""
+
+        path = self._candidate_path(run_id, stage)
+        if not path.exists():
+            raise ProviderContractError(f"no external-agent candidate exists for {run_id}/{stage}")
+        content = path.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        rejected = self._stage_path(
+            run_id,
+            stage,
+            f"rejected/candidate-{digest}.json",
+        )
+        rejected.parent.mkdir(parents=True, exist_ok=True)
+        path.replace(rejected)
+        self._manifests.write(
+            rejected.with_suffix(".rejection.json"),
+            {
+                "schema_version": "readwelt.agent-rejection.v1",
+                "run_id": run_id,
+                "stage": stage,
+                "candidate_digest": f"sha256:{digest}",
+                "reason": reason,
+                "rejected_at": datetime.now(UTC).isoformat(),
+            },
+        )
 
     def _request_path(self, run_id: str, stage: str) -> Path:
         return self._stage_path(run_id, stage, "request.json")

@@ -15,10 +15,20 @@ class DocumentSection:
     start_offset: int
     end_offset: int
     anchor: SpanAnchor
+    kind: str | None = None
+    parent_element_id: str | None = None
+    heading_trail: tuple[str, ...] = ()
+    element_id: str | None = None
+    page: int | None = None
+    bounding_box: tuple[float, float, float, float] | None = None
 
     def __post_init__(self) -> None:
         if self.start_offset < 0 or self.end_offset < self.start_offset:
             raise ValueError("invalid section offsets")
+        if self.page is not None and self.page < 1:
+            raise ValueError("section page must be positive")
+        if self.bounding_box is not None and self.page is None:
+            raise ValueError("section bounding_box requires a page")
 
 
 @dataclass(frozen=True, slots=True)

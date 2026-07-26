@@ -11,12 +11,14 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, TextIO
 
 from readwelt.providers.contracts import (
     ProviderContractError,
     ProviderSelection,
 )
+from readwelt.providers.external_agent import ExternalAgentAdapter
 from readwelt.providers.projection import resolve_project_root, to_jsonable
 from readwelt.providers.service_port import (
     ApplicationServiceUnavailable,
@@ -58,6 +60,33 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser = subparsers.add_parser("show", help="Show a reading run status")
     show_parser.add_argument("run_id")
     _add_common_options(show_parser)
+
+    agent_start = subparsers.add_parser(
+        "agent-start",
+        help="Start a provider-free reading and return the first host-neutral Agent turn",
+    )
+    agent_start.add_argument("source")
+    agent_start.add_argument("--purpose", default="完整逆向阅读")
+    agent_start.add_argument("--token-budget", type=int)
+    agent_start.add_argument("--idempotency-key")
+    _add_common_options(agent_start)
+
+    agent_turn = subparsers.add_parser(
+        "agent-turn",
+        help="Return the current actionable turn for an Agent-owned reading",
+    )
+    agent_turn.add_argument("run_id")
+    _add_common_options(agent_turn)
+
+    agent_submit = subparsers.add_parser(
+        "agent-submit",
+        help="Submit a stage candidate JSON payload and return the next Agent turn",
+    )
+    agent_submit.add_argument("run_id")
+    agent_submit.add_argument("candidate_file")
+    agent_submit.add_argument("--agent-name", required=True)
+    agent_submit.add_argument("--model")
+    _add_common_options(agent_submit)
     return parser
 
 
@@ -102,6 +131,26 @@ async def execute(args: argparse.Namespace, service: object) -> Any:
         )
     if args.command == "show":
         return await invoke(service, "get_run_status", args.run_id)
+    if args.command == "agent-start":
+        return await ExternalAgentAdapter(service).start(
+            args.source,
+            purpose=args.purpose,
+            token_budget=args.token_budget,
+            idempotency_key=args.idempotency_key,
+        )
+    if args.command == "agent-turn":
+        return await ExternalAgentAdapter(service).current(args.run_id)
+    if args.command == "agent-submit":
+        with Path(args.candidate_file).open(encoding="utf-8") as candidate_stream:
+            candidate = json.load(candidate_stream)
+        if not isinstance(candidate, dict):
+            raise ValueError("candidate file must contain a JSON object")
+        return await ExternalAgentAdapter(service).advance(
+            args.run_id,
+            candidate,
+            agent_name=args.agent_name,
+            model=args.model,
+        )
     if args.command == "read":
         selection = ProviderSelection.build(
             mode=args.provider_mode,
@@ -148,8 +197,8 @@ def main(
 def _human_output(command: str, value: Any) -> str:
     if isinstance(value, dict):
         preferred = (
-            ("run_id", "status", "stage")
-            if command in ("read", "show")
+            ("run_id", "status", "stage", "action")
+            if command in ("read", "show", "agent-start", "agent-turn", "agent-submit")
             else ("document_id", "status")
         )
         visible = [f"{key}={value[key]}" for key in preferred if key in value]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -16,6 +17,7 @@ from readwelt.providers import (
     StageCandidate,
     StageRequest,
 )
+from readwelt.providers.external_agent import ExternalAgentAdapter
 
 
 class PipelineProvider:
@@ -108,6 +110,7 @@ def test_prepare_persists_semantic_atlas(tmp_path: Path) -> None:
         encoding="utf-8"
     )
     assert '"semantic_atlas_artifact"' in manifest
+    assert '"article_graph_artifact"' in manifest
 
 
 def test_read_requires_an_explicitly_available_provider(tmp_path: Path) -> None:
@@ -143,11 +146,26 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
     assert {artifact.artifact_type for artifact in run.artifacts} == {
         "source_snapshot",
         "semantic_atlas",
+        "anchored_text_unitization",
+        "graph_extraction",
+        "article_graph_merge_report",
+        "article_graph_provenance_ledger",
+        "article_graph_source_index",
+        "article_graph",
+        "article_graph_build",
+        "stage_view",
         "stage_artifact",
         "reading_bundle",
         "reader_report_markdown",
     }
+    assert sum(artifact.artifact_type == "graph_extraction" for artifact in run.artifacts) == 2
+    assert sum(artifact.artifact_type == "stage_view" for artifact in run.artifacts) == 6
     assert sum(artifact.artifact_type == "stage_artifact" for artifact in run.artifacts) == 6
+    assert all("stage_view" in request.evidence_packet for request in provider.requests)
+    assert all(
+        request.evidence_packet["stage_view"]["stage"] == request.stage
+        for request in provider.requests
+    )
     manifest = json.loads(
         (service.root / "runs" / run.run_id / "manifest.json").read_text(encoding="utf-8")
     )
@@ -234,6 +252,126 @@ def test_agent_takeover_pauses_and_replays_submitted_candidates(tmp_path: Path) 
 
     assert run.execution_status is ExecutionStatus.COMPLETED
     assert run.current_task == "completed"
+
+
+def test_host_neutral_agent_turns_complete_without_an_internal_provider(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "article.txt"
+    source.write_text("第一段提出主张。\n\n第二段给出限制。", encoding="utf-8")
+    service = ReadweltApplicationService(
+        base_directory=tmp_path,
+        ingestion_backend="plain_text",
+        candidate_providers=(),
+    )
+    agent = ExternalAgentAdapter(service)
+
+    async def run_session() -> dict[str, Any]:
+        turn = await agent.start(
+            str(source),
+            idempotency_key="host-neutral-agent",
+        )
+        for expected_stage in ReadingStage:
+            assert turn["action"] == "generate_stage_candidate"
+            assert turn["stage"] == expected_stage.value
+            request = turn["request"]
+            assert request["response_schema"]["type"] == "object"
+            anchors = request["evidence_packet"]["anchors"]
+            upstream = request["evidence_packet"]["upstream_claims"]
+            claims = [
+                {
+                    "claim_id": f"{expected_stage.value}:host-neutral:{index}",
+                    "text": f"{expected_stage.value} claim {index}",
+                    "anchor_ids": [anchors[0]["anchor_id"]],
+                    "decision": "accepted",
+                    **(
+                        {
+                            "source_claim_ids": [upstream[0]["claim_id"]],
+                        }
+                        if expected_stage
+                        not in (ReadingStage.MAINLINE, ReadingStage.STRUCTURE)
+                        else {}
+                    ),
+                    **(
+                        {"provenance": {"interpretation_id": f"lens-{index}"}}
+                        if expected_stage is ReadingStage.AUTHOR_MODEL
+                        else {}
+                    ),
+                }
+                for index in range(
+                    2 if expected_stage is ReadingStage.AUTHOR_MODEL else 1
+                )
+            ]
+            turn = await agent.advance(
+                turn["run_id"],
+                {"claims": claims, "gaps": [], "warnings": []},
+                agent_name="generic-mcp-agent",
+                model="agent-model",
+            )
+        return turn
+
+    completed = asyncio.run(run_session())
+
+    assert completed["action"] == "completed"
+    assert completed["execution_status"] == "completed"
+    assert {item["artifact_type"] for item in completed["outputs"]} == {
+        "reading_bundle",
+        "reader_report_markdown",
+    }
+
+
+def test_host_neutral_agent_can_retry_a_rejected_candidate(tmp_path: Path) -> None:
+    source = tmp_path / "article.txt"
+    source.write_text("文章提出一个可以验证的主张。", encoding="utf-8")
+    service = ReadweltApplicationService(
+        base_directory=tmp_path,
+        ingestion_backend="plain_text",
+        candidate_providers=(),
+    )
+    agent = ExternalAgentAdapter(service)
+
+    async def reject_then_retry() -> tuple[dict[str, Any], dict[str, Any]]:
+        turn = await agent.start(str(source), idempotency_key="agent-retry")
+        rejected = await agent.advance(
+            turn["run_id"],
+            {"claims": [], "gaps": ["not-an-object"], "warnings": []},
+            agent_name="generic-agent",
+        )
+        request = rejected["request"]
+        accepted = await agent.advance(
+            turn["run_id"],
+            {
+                "claims": [
+                    {
+                        "claim_id": "retry:claim:1",
+                        "text": "文章提出一个主张。",
+                        "anchor_ids": [
+                            request["evidence_packet"]["anchors"][0]["anchor_id"]
+                        ],
+                        "decision": "accepted",
+                    }
+                ],
+                "gaps": [],
+                "warnings": [],
+            },
+            agent_name="generic-agent",
+        )
+        return rejected, accepted
+
+    rejected, accepted = asyncio.run(reject_then_retry())
+
+    assert rejected["action"] == "generate_stage_candidate"
+    assert rejected["stage"] == ReadingStage.MAINLINE.value
+    assert "gaps entries must be objects" in rejected["validation_errors"][0]
+    assert accepted["stage"] == ReadingStage.STRUCTURE.value
+    rejected_candidates = tuple(
+        path
+        for path in (service.root / "runs" / rejected["run_id"] / "agent").rglob(
+            "rejected/candidate-*.json"
+        )
+        if not path.name.endswith(".rejection.json")
+    )
+    assert len(rejected_candidates) == 1
 
 
 def test_resume_uses_settled_stage_prefix_without_repeating_providers(

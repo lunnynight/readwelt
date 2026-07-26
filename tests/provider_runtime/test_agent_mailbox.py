@@ -25,11 +25,13 @@ def test_agent_mailbox_pauses_then_replays_candidate(tmp_path) -> None:
         evidence_packet={"anchors": []},
     )
 
+    response_schema = {"type": "object", "required": ["claims"]}
     with pytest.raises(AgentInputRequired):
-        asyncio.run(mailbox.generate(request, {}))
+        asyncio.run(mailbox.generate(request, response_schema))
 
     frozen_request = mailbox.pull("run-1", "mainline")
     assert frozen_request.run_id == request.run_id
+    assert frozen_request.response_schema == response_schema
     request_digest = frozen_request.provenance["request_digest"]
     candidate = StageCandidate(
         schema_version="1",
@@ -41,7 +43,7 @@ def test_agent_mailbox_pauses_then_replays_candidate(tmp_path) -> None:
         provenance={"request_digest": request_digest},
     )
     assert mailbox.submit(candidate) == candidate
-    assert asyncio.run(mailbox.generate(request, {})) == candidate
+    assert asyncio.run(mailbox.generate(request, response_schema)) == candidate
 
 
 def test_agent_mailbox_rejects_path_escape(tmp_path) -> None:

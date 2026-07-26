@@ -78,6 +78,7 @@ async def invoke_read(
     service: object,
     source_or_document_id: str,
     selection: ProviderSelection,
+    **options: Any,
 ) -> Any:
     """Call ``read`` while preserving compatibility with the first core facade."""
 
@@ -97,6 +98,20 @@ async def invoke_read(
             "the current application service does not support provider selection"
         )
     kwargs = {"provider_selection": selection.to_dict()} if accepts_selection else {}
+    if options:
+        accepts_kwargs = any(
+            item.kind is inspect.Parameter.VAR_KEYWORD
+            for item in signature.parameters.values()
+        )
+        unsupported = [
+            key for key in options if key not in signature.parameters and not accepts_kwargs
+        ]
+        if unsupported:
+            raise ApplicationServiceUnavailable(
+                "the current application service does not support read options: "
+                + ", ".join(sorted(unsupported))
+            )
+        kwargs.update(options)
     if inspect.iscoroutinefunction(target):
         return await target(source_or_document_id, **kwargs)
     value = await asyncio.to_thread(target, source_or_document_id, **kwargs)

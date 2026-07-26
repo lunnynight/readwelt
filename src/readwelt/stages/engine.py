@@ -24,123 +24,55 @@ from readwelt.domain.reading import (
 from readwelt.domain.status import EpistemicStatus, ExecutionStatus
 from readwelt.providers.contracts import AgentInputRequired, StageCandidate, StageRequest
 from readwelt.providers.model_protocol import CandidateProvider
+from readwelt.stage_views import StageView, validate_stage_view
 
-_STAGES = (
-    ReadingStage.MAINLINE,
-    ReadingStage.STRUCTURE,
-    ReadingStage.DECOMPRESSION,
-    ReadingStage.AUTHOR_MODEL,
-    ReadingStage.BOUNDARIES,
-    ReadingStage.TRANSFER,
+from .policies import (
+    ACCEPTED as _ACCEPTED,
 )
-_ARTICLE_ONLY = frozenset((ReadingStage.MAINLINE, ReadingStage.STRUCTURE))
-_ACCEPTED = frozenset((LedgerDecision.ACCEPTED, LedgerDecision.QUALIFIED))
-_STAGE_POLICIES: Mapping[ReadingStage, Mapping[str, Any]] = {
-    ReadingStage.MAINLINE: {
-        "goal": "Recover the article's main line using only the supplied source anchors.",
-        "produce": (
-            "core idea, core question, major claims, internal evidence, "
-            "reasoning chain, and source-underdetermined gaps"
-        ),
-        "constraints": (
-            "Every strong claim must cite anchor_ids; do not use biography, "
-            "historical background, external research, or imported theory."
-        ),
-    },
-    ReadingStage.STRUCTURE: {
-        "goal": "Map how the article's argument is constructed.",
-        "produce": (
-            "paragraph functions and claim/premise/evidence/example/objection/"
-            "qualification/conclusion relationships"
-        ),
-        "constraints": (
-            "Separate explicit structure from inference and the author's claims "
-            "from quoted claims; use only source anchors and accepted stage-1 claims."
-        ),
-    },
-    ReadingStage.DECOMPRESSION: {
-        "goal": "Decompress knowledge assumed or compressed by the article.",
-        "produce": (
-            "prerequisites, concepts, context, verification targets, and conflicts "
-            "linked to specific source or upstream claim ids"
-        ),
-        "constraints": (
-            "External evidence may support, qualify, or challenge frozen article "
-            "understanding, but must not rewrite stages 1-2."
-        ),
-    },
-    ReadingStage.AUTHOR_MODEL: {
-        "goal": "Recover a bounded model of how the author sees and selects the problem.",
-        "produce": (
-            "core assumptions, salient objects, problem genesis, chosen and rejected "
-            "methods, plus at least two competing interpretations"
-        ),
-        "constraints": (
-            "Mark interpretation distance and evidence; do not present speculation "
-            "as author fact. Every competing claim must include a distinct "
-            "provenance.interpretation_id."
-        ),
-    },
-    ReadingStage.BOUNDARIES: {
-        "goal": "Pressure-test the settled reading.",
-        "produce": (
-            "implicit assumptions, validity conditions, counterexamples, temporal/"
-            "regional/institutional boundaries, alternatives, and missing evidence"
-        ),
-        "constraints": "Qualify or reject claims that do not survive the boundary test.",
-    },
-    ReadingStage.TRANSFER: {
-        "goal": "Transfer only claims that survived the stage-5 boundary test.",
-        "produce": (
-            "original method, abstract principle, invariant mechanism, prerequisites, "
-            "non-transferable contingencies, new-domain example, and failure test"
-        ),
-        "constraints": (
-            "Do not derive a transfer principle directly from an attractive sentence; "
-            "every transfer must cite accepted or qualified stage-5 source_claim_ids."
-        ),
-    },
-}
+from .policies import (
+    ARTICLE_ONLY as _ARTICLE_ONLY,
+)
+from .policies import (
+    RESPONSE_SCHEMA as _RESPONSE_SCHEMA,
+)
+from .policies import (
+    STAGE_POLICIES as _STAGE_POLICIES,
+)
+from .policies import (
+    STAGES as _STAGES,
+)
 
-_RESPONSE_SCHEMA: Mapping[str, Any] = {
-    "type": "object",
-    "required": ["claims"],
-    "properties": {
-        "claims": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["text", "anchor_ids"],
-                "properties": {
-                    "claim_id": {"type": "string"},
-                    "text": {"type": "string"},
-                    "anchor_ids": {"type": "array", "items": {"type": "string"}},
-                    "decision": {
-                        "enum": [decision.value for decision in LedgerDecision],
-                    },
-                    "source_claim_ids": {"type": "array", "items": {"type": "string"}},
-                    "limitations": {"type": "array", "items": {"type": "string"}},
-                    "provenance": {"type": "object"},
-                },
-            },
-        },
-        "gaps": {"type": "array"},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-    },
-}
+
+class AgentCandidateRejected(ValueError):
+    """A retryable external-agent candidate failed deterministic settlement."""
+
+    def __init__(self, stage: str, reason: str) -> None:
+        super().__init__(reason)
+        self.stage = stage
+        self.reason = reason
 
 StageArtifactSink = Callable[[StageArtifact], Awaitable[None]]
 StageEvidenceFactory = Callable[
     [ReadingStage, Sequence[StageArtifact]],
     EvidencePacket,
 ]
+StageViewFactory = Callable[
+    [ReadingStage, Sequence[StageArtifact]],
+    "StageView",
+]
 
 
 class SixStageReadingEngine:
     """Execute the fixed stage order and freeze every accepted result."""
 
-    def __init__(self, provider: CandidateProvider) -> None:
+    def __init__(
+        self,
+        provider: CandidateProvider,
+        *,
+        retry_invalid_candidates: bool = False,
+    ) -> None:
         self._provider = provider
+        self._retry_invalid_candidates = retry_invalid_candidates
 
     async def run(
         self,
@@ -150,6 +82,7 @@ class SixStageReadingEngine:
         initial_artifacts: Sequence[StageArtifact] = (),
         artifact_sink: StageArtifactSink | None = None,
         evidence_factory: StageEvidenceFactory | None = None,
+        stage_view_factory: StageViewFactory | None = None,
     ) -> ReadingBundle:
         if evidence.run_id == "":
             raise ValueError("evidence run_id is required")
@@ -172,23 +105,41 @@ class SixStageReadingEngine:
                 if stage_evidence.stage is not None and stage_evidence.stage is not stage:
                     raise ValueError("stage evidence belongs to a different reading stage")
                 anchor_ids = self._validate_evidence(snapshot, stage_evidence)
+                stage_view = (
+                    stage_view_factory(stage, artifacts)
+                    if stage_view_factory is not None
+                    else None
+                )
+                if stage_view is not None:
+                    validate_stage_view(
+                        stage_view,
+                        snapshot_id=snapshot.snapshot_id,
+                        stage=stage,
+                        allowed_anchor_ids=anchor_ids,
+                    )
                 request = self._build_request(
                     stage=stage,
                     snapshot=snapshot,
                     evidence=stage_evidence,
                     artifacts=artifacts,
                     upstream_claims=eligible,
+                    stage_view=stage_view,
                 )
                 candidate = await self._provider.generate(request, _RESPONSE_SCHEMA)
-                artifact = self._settle_candidate(
-                    candidate=candidate,
-                    stage=stage,
-                    run_id=evidence.run_id,
-                    input_artifacts=artifacts,
-                    allowed_anchor_ids=anchor_ids,
-                    allowed_source_claim_ids={claim.claim_id for claim in eligible},
-                    known_claim_ids=known_claim_ids,
-                )
+                try:
+                    artifact = self._settle_candidate(
+                        candidate=candidate,
+                        stage=stage,
+                        run_id=evidence.run_id,
+                        input_artifacts=artifacts,
+                        allowed_anchor_ids=anchor_ids,
+                        allowed_source_claim_ids={claim.claim_id for claim in eligible},
+                        known_claim_ids=known_claim_ids,
+                    )
+                except ValueError as exc:
+                    if self._retry_invalid_candidates:
+                        raise AgentCandidateRejected(stage.value, str(exc)) from exc
+                    raise
                 if stage is ReadingStage.MAINLINE:
                     artifact = self._add_entry_gaps(artifact, snapshot, stage_evidence)
                 if stage is ReadingStage.STRUCTURE:
@@ -207,6 +158,8 @@ class SixStageReadingEngine:
                     await artifact_sink(artifact)
                 known_claim_ids.update(claim.claim_id for claim in artifact.claims)
             except AgentInputRequired:
+                raise
+            except AgentCandidateRejected:
                 raise
             except Exception as exc:
                 transitions.append("failed")
@@ -286,6 +239,7 @@ class SixStageReadingEngine:
         evidence: EvidencePacket,
         artifacts: Sequence[StageArtifact],
         upstream_claims: Sequence[ReadingClaim],
+        stage_view: StageView | None = None,
     ) -> StageRequest:
         external_allowed = stage not in _ARTICLE_ONLY
         packet: dict[str, Any] = {
@@ -350,6 +304,8 @@ class SixStageReadingEngine:
                 for claim in upstream_claims
             ],
         }
+        if stage_view is not None:
+            packet["stage_view"] = stage_view.to_mapping()
         return StageRequest(
             schema_version="1",
             run_id=evidence.run_id,

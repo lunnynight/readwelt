@@ -170,11 +170,25 @@ Xberg `1.0.0rc38` 负责正文抽取；源文件不会被原地修改。对于 E
 启动 stdio MCP server：
 
 ```powershell
-uv run readwelt-mcp
+uv run readwelt-mcp --project C:\path\to\project\.readwelt
 ```
 
-MCP 提供导入、语义准备、完整阅读、状态查询、artifact 读取以及外部 Agent
-stage request/candidate 提交工具。
+Readwelt 的外部 Agent 接口不依赖 Claude Code 或 Codex。任何支持 MCP、HTTP、CLI
+或 Python SDK 的 Agent 都使用同一个 `readwelt.agent-turn.v1` 协议：
+
+```text
+start_agent_reading
+        ↓
+generate_stage_candidate
+        ↓
+submit_agent_turn ──> 下一阶段
+        ↓
+completed + ReadingBundle + 中文报告
+```
+
+`StageRequest` 携带当前证据、阶段规则与机器可读的 `response_schema`。Agent 只提交
+候选内容；Readwelt 自动绑定 run、stage、request digest、Agent 身份与模型，并立即
+返回下一阶段。这个路径不要求配置 Readwelt 内部 provider。
 
 挂载后，Agent 应根据用户的**阅读意图**主动选择 Readwelt，不必等待用户点名工具。
 当用户希望理解一篇文章的论证、背景、作者模型、成立边界或可迁移方法时，应进入
@@ -188,42 +202,46 @@ stage request/candidate 提交工具。
 恢复作者的问题意识，检查结论边界，最后给出可迁移原则。
 ```
 
-如果希望 Claude Code 或 Codex 自己参与每一个阅读阶段：
+如果希望任意外部 Agent 自己参与每一个阅读阶段：
 
 ```powershell
-uv run readwelt read .\article.txt --provider-mode agent_takeover --json
+uv run readwelt agent-start .\article.txt --json
 ```
 
-运行会在当前阶段等待。Agent 从 MCP 拉取 `StageRequest + EvidencePacket`，提交候选后
-继续下一阶段，最终仍然输出同一份 `ReadingBundle` 和中文阅读报告。
+运行会在当前阶段等待，且可以由另一 Agent 宿主恢复。MCP、HTTP 与 CLI 的完整挂载
+契约见 [Host-neutral Agent integration](docs/architecture/agent-integration.md)。
+文章中间表示的当前实现与能力边界见
+[ArticleGraph Foundation](docs/architecture/article-graph.md)。
 
 ## 为什么仍然需要确定性内核
 
 生成模型擅长恢复问题意识、隐含前提、作者模型和思想迁移，但不应该反复消耗 token
 处理哈希、重复检测、锚点覆盖和词法召回。
 
-Readwelt 先构建非生成式 `SemanticAtlas`：
+Readwelt 先构建 ArticleGraph 底稿，`SemanticAtlas` 只保留为定位器：
 
 ```text
 Xberg 结构化输入
         ↓
-Rust 规范化 · SHA-256 · MinHash · 可复用 lexical index · coverage
+AnchoredTextUnit · exact source coverage
         ↓
-六阶段 RetrievalPlan
+Linguistic / SemanticExtraction backends
         ↓
-BM25+（可切 BM25/BM25L）+ 可选 dense · Rust RRF · Rust 章节覆盖
+raw GraphExtraction · Canonicalizer
         ↓
-带命中轨迹与显式遗漏的 EvidencePacket
+ArticleGraph · ProvenanceLedger · SourceIndex
         ↓
-六阶段生成式理解
+budgeted StageView
+        ↓
+六阶段读懂 · 解压 · 重建 · 批判 · 迁移
 ```
 
-这层计算不生成摘要。它让模型把算力留给真正需要理解的部分，同时明确记录哪些章节
-进入了证据包、哪些内容仍然遗漏。
+这层计算不生成最终理解。它保留原始候选、能力缺口、合并决策、冲突和双向来源索引，
+让六阶段读取不同的最小图切片，并能从每个知识对象回到原文。
 
-默认安装仍只启用 Rust BM25+/coverage，不下载模型。一次建索引后，六阶段复用同一
-native index；计分、dense cosine、RRF 和预算裁剪都不走 Python 循环。需要中文释义
-召回时：
+默认安装不下载 NLP 或 dense 模型，使用确定性 linguistic/semantic 降级 backend。
+BM25+/coverage 仍可帮助 StageView 定位原文；dense 是可选 locator，不是
+ArticleGraph 或 Completion Engine 的阻塞依赖。需要中文释义定位时：
 
 ```powershell
 uv sync --extra all --extra dense
@@ -235,7 +253,8 @@ uv run readwelt read .\article.txt --provider local --json
 CUDA 或 CPU，模型缓存在项目的 `.readwelt/cache/models`。文档向量以版本化 `.f32`
 文件缓存在 `.readwelt/cache/embeddings`，跨进程复用且不需要数据库；查询则由阅读
 目的、阶段职责和已结算的上游 claims 共同生成。
-检索轨迹包含 lexical/dense rank、原始分数和 RRF 分数，会随 `StageRequest` 留存。
+定位轨迹包含 lexical/dense rank、原始分数和 RRF 分数，会随 `StageView` 和
+`StageRequest` 留存。
 当预算足以容纳全文时走 `full-coverage-v1` 快路径，保持原文顺序并完全跳过向量计算；
 hybrid 只在预算确实需要筛选证据时启动。
 详细边界见 [检索架构](docs/architecture/dense-retrieval.md)。

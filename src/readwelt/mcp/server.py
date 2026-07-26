@@ -6,7 +6,9 @@ Importing this module does not require MCP.  The dependency is loaded only when
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import argparse
+import os
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +108,46 @@ class MCPAdapter:
     ) -> Any:
         return await self.agent.submit(run_id, stage, candidate)
 
+    async def start_agent_reading(
+        self,
+        source: str,
+        purpose: str = "完整逆向阅读",
+        token_budget: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        """Start a provider-free run for any external Agent host."""
+
+        self._validate_source(source)
+        return await self.agent.start(
+            source,
+            purpose=purpose,
+            token_budget=token_budget,
+            idempotency_key=idempotency_key,
+        )
+
+    async def get_agent_turn(self, run_id: str) -> Any:
+        """Return the current actionable turn for a resumable Agent run."""
+
+        return await self.agent.current(run_id)
+
+    async def submit_agent_turn(
+        self,
+        run_id: str,
+        candidate: Mapping[str, Any],
+        agent_name: str,
+        model: str | None = None,
+        agent_provenance: Mapping[str, Any] | None = None,
+    ) -> Any:
+        """Submit one stage payload and immediately return the next turn."""
+
+        return await self.agent.advance(
+            run_id,
+            candidate,
+            agent_name=agent_name,
+            model=model,
+            agent_provenance=agent_provenance,
+        )
+
     def _validate_source(self, source: str) -> None:
         candidate = Path(source)
         if candidate.exists():
@@ -164,6 +206,27 @@ def create_mcp_server(
         name="submit_stage_candidate",
         description="Submit an external-agent StageCandidate for validation.",
     )(operations.submit_stage_candidate)
+    server.tool(
+        name="start_agent_reading",
+        description=(
+            "Start a host-neutral six-stage reading with no internal model provider "
+            "and return the first actionable Agent turn."
+        ),
+    )(operations.start_agent_reading)
+    server.tool(
+        name="get_agent_turn",
+        description=(
+            "Resume a host-neutral Agent run and return either its pending StageRequest "
+            "or final output artifacts."
+        ),
+    )(operations.get_agent_turn)
+    server.tool(
+        name="submit_agent_turn",
+        description=(
+            "Submit only the current stage candidate payload; Readwelt binds run, stage, "
+            "and request provenance, then returns the next turn or final outputs."
+        ),
+    )(operations.submit_agent_turn)
 
     server.resource(
         "readwelt://runs/{run_id}/stage-request/{stage}",
@@ -187,5 +250,12 @@ def run_stdio(
     server.run(transport="stdio")
 
 
-def main() -> None:
-    run_stdio()
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="readwelt-mcp")
+    parser.add_argument(
+        "--project",
+        default=os.environ.get("READWELT_PROJECT_ROOT", ".readwelt"),
+        help="Readwelt project directory; defaults to READWELT_PROJECT_ROOT or .readwelt",
+    )
+    args = parser.parse_args(argv)
+    run_stdio(project_root=args.project)

@@ -130,6 +130,7 @@ class StageRequest:
     run_id: str
     stage: str
     evidence_packet: Mapping[str, Any]
+    response_schema: Mapping[str, Any] = field(default_factory=dict)
     capabilities: tuple[str, ...] = ()
     resource_uri: str | None = None
     provenance: Mapping[str, Any] = field(default_factory=dict)
@@ -150,6 +151,7 @@ class StageRequest:
             run_id=str(value["run_id"]),
             stage=str(value["stage"]),
             evidence_packet=dict(packet),
+            response_schema=dict(value.get("response_schema", {})),
             capabilities=tuple(str(item) for item in value.get("capabilities", ())),
             resource_uri=(
                 str(value["resource_uri"]) if value.get("resource_uri") is not None else None

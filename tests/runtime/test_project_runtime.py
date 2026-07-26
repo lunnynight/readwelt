@@ -56,6 +56,7 @@ def test_txt_creates_snapshot_and_semantic_atlas_without_a_model(tmp_path: Path)
     )
     assert not Path(manifest["semantic_atlas_artifact"]["path"]).is_absolute()
     assert manifest["semantic_atlas_artifact"]["artifact_type"] == "semantic_atlas"
+    assert manifest["article_graph_artifact"]["artifact_type"] == "article_graph"
 
 
 def test_completed_real_run_resume_is_idempotent(tmp_path: Path) -> None:
