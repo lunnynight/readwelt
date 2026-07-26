@@ -1,0 +1,18 @@
+[package]
+name = "readwelt-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+blake2.workspace = true
+serde.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+
+[[bench]]
+name = "semantic_batch"
+harness = false
