@@ -3,7 +3,7 @@
 # mypy: disable-error-code="import-not-found,untyped-decorator"
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from readwelt.providers.contracts import (
     ProviderContractError,
@@ -25,6 +25,50 @@ from readwelt.providers.service_port import (
 
 class FastAPIUnavailable(RuntimeError):
     code = "optional_dependency_missing"
+
+
+class ImportDocumentPayload(TypedDict):
+    source: str
+
+
+class PrepareDocumentPayload(TypedDict):
+    options: NotRequired[dict[str, Any]]
+
+
+class BatchPreparePayload(TypedDict):
+    sources: list[str]
+    concurrency: NotRequired[int]
+
+
+class StartRunPayload(TypedDict):
+    source_or_document_id: str
+    provider_mode: NotRequired[str]
+    provider: NotRequired[str | None]
+    candidate_providers: NotRequired[list[str]]
+
+
+class StartAgentSessionPayload(TypedDict):
+    source_or_document_id: str
+    purpose: NotRequired[str]
+    token_budget: NotRequired[int | None]
+    idempotency_key: NotRequired[str | None]
+
+
+class SubmitAgentTurnPayload(TypedDict):
+    candidate: dict[str, Any]
+    agent_name: str
+    model: NotRequired[str | None]
+    agent_provenance: NotRequired[dict[str, Any] | None]
+
+
+class SubmitStageCandidatePayload(TypedDict):
+    schema_version: str
+    run_id: str
+    stage: str
+    candidate: dict[str, Any]
+    provider: str
+    model: NotRequired[str | None]
+    provenance: NotRequired[dict[str, Any]]
 
 
 def create_app(
@@ -90,8 +134,8 @@ def create_app(
             "storage": "local",
         }
 
-    @app.post("/v1/documents")
-    async def import_document(payload: dict[str, Any]) -> Any:
+    @app.post("/v1/documents", response_model=dict[str, Any])
+    async def import_document(payload: ImportDocumentPayload) -> Any:
         source = str(payload.get("source", "")).strip()
         if not source:
             raise request_error(ValueError("source is required"))
@@ -103,15 +147,25 @@ def create_app(
                 raise request_error(exc) from exc
         return to_jsonable(await invoke(active_service, "import_document", source))
 
-    @app.post("/v1/documents/{document_id}/prepare")
-    async def prepare_document(document_id: str, payload: dict[str, Any] | None = None) -> Any:
+    @app.post(
+        "/v1/documents/{document_id}/prepare",
+        response_model=dict[str, Any],
+    )
+    async def prepare_document(
+        document_id: str,
+        payload: PrepareDocumentPayload | None = None,
+    ) -> Any:
         options = (payload or {}).get("options", {})
         if not isinstance(options, dict):
             raise request_error(ValueError("options must be an object"))
         return to_jsonable(await invoke(active_service, "prepare", document_id, **options))
 
-    @app.post("/v1/batches/prepare", status_code=status.HTTP_202_ACCEPTED)
-    async def batch_prepare(payload: dict[str, Any]) -> Any:
+    @app.post(
+        "/v1/batches/prepare",
+        status_code=status.HTTP_202_ACCEPTED,
+        response_model=dict[str, Any],
+    )
+    async def batch_prepare(payload: BatchPreparePayload) -> Any:
         raw_sources = payload.get("sources")
         if not isinstance(raw_sources, list) or not raw_sources:
             raise request_error(ValueError("sources must be a non-empty array"))
@@ -133,8 +187,12 @@ def create_app(
             )
         )
 
-    @app.post("/v1/runs", status_code=status.HTTP_202_ACCEPTED)
-    async def start_run(payload: dict[str, Any]) -> Any:
+    @app.post(
+        "/v1/runs",
+        status_code=status.HTTP_202_ACCEPTED,
+        response_model=dict[str, Any],
+    )
+    async def start_run(payload: StartRunPayload) -> Any:
         source = str(payload.get("source_or_document_id", "")).strip()
         if not source:
             raise request_error(ValueError("source_or_document_id is required"))
@@ -158,8 +216,12 @@ def create_app(
             raise request_error(exc) from exc
         return to_jsonable(result)
 
-    @app.post("/v1/agent-sessions", status_code=status.HTTP_202_ACCEPTED)
-    async def start_agent_session(payload: dict[str, Any]) -> Any:
+    @app.post(
+        "/v1/agent-sessions",
+        status_code=status.HTTP_202_ACCEPTED,
+        response_model=dict[str, Any],
+    )
+    async def start_agent_session(payload: StartAgentSessionPayload) -> Any:
         source = str(payload.get("source_or_document_id", "")).strip()
         if not source:
             raise request_error(ValueError("source_or_document_id is required"))
@@ -169,14 +231,13 @@ def create_app(
                 ensure_within_project(root.parent, candidate)
             except ValueError as exc:
                 raise request_error(exc) from exc
+        raw_token_budget = payload.get("token_budget")
         try:
             return await agent.start(
                 source,
                 purpose=str(payload.get("purpose", "完整逆向阅读")),
                 token_budget=(
-                    int(payload["token_budget"])
-                    if payload.get("token_budget") is not None
-                    else None
+                    int(raw_token_budget) if raw_token_budget is not None else None
                 ),
                 idempotency_key=(
                     str(payload["idempotency_key"])
@@ -187,7 +248,7 @@ def create_app(
         except ProviderContractError as exc:
             raise request_error(exc) from exc
 
-    @app.get("/v1/agent-sessions/{run_id}")
+    @app.get("/v1/agent-sessions/{run_id}", response_model=dict[str, Any])
     async def get_agent_session(run_id: str) -> Any:
         try:
             return await agent.current(run_id)
@@ -196,8 +257,11 @@ def create_app(
         except ProviderContractError as exc:
             raise request_error(exc) from exc
 
-    @app.post("/v1/agent-sessions/{run_id}/turns")
-    async def submit_agent_turn(run_id: str, payload: dict[str, Any]) -> Any:
+    @app.post(
+        "/v1/agent-sessions/{run_id}/turns",
+        response_model=dict[str, Any],
+    )
+    async def submit_agent_turn(run_id: str, payload: SubmitAgentTurnPayload) -> Any:
         candidate = payload.get("candidate")
         if not isinstance(candidate, dict):
             raise request_error(ValueError("candidate must be an object"))
@@ -218,29 +282,39 @@ def create_app(
         except ProviderContractError as exc:
             raise request_error(exc) from exc
 
-    @app.get("/v1/runs/{run_id}")
+    @app.get("/v1/runs/{run_id}", response_model=dict[str, Any])
     async def get_run_status(run_id: str) -> Any:
         try:
             return to_jsonable(await invoke(active_service, "get_run_status", run_id))
         except FileNotFoundError as exc:
             raise not_found_error("run", run_id) from exc
 
-    @app.get("/v1/artifacts/{digest}")
+    @app.get("/v1/artifacts/{digest}", response_model=dict[str, Any])
     async def get_artifact(digest: str) -> Any:
         try:
             return to_jsonable(await invoke(active_service, "get_artifact", digest))
         except (FileNotFoundError, ValueError) as exc:
             raise request_error(exc) from exc
 
-    @app.get("/v1/runs/{run_id}/stage-request/{stage_name}")
+    @app.get(
+        "/v1/runs/{run_id}/stage-request/{stage_name}",
+        response_model=dict[str, Any],
+    )
     async def pull_stage_request(run_id: str, stage_name: str) -> Any:
         try:
             return await agent.pull(run_id, stage_name)
         except ProviderContractError as exc:
             raise request_error(exc) from exc
 
-    @app.post("/v1/runs/{run_id}/stage-candidate/{stage_name}")
-    async def submit_stage_candidate(run_id: str, stage_name: str, payload: dict[str, Any]) -> Any:
+    @app.post(
+        "/v1/runs/{run_id}/stage-candidate/{stage_name}",
+        response_model=dict[str, Any],
+    )
+    async def submit_stage_candidate(
+        run_id: str,
+        stage_name: str,
+        payload: SubmitStageCandidatePayload,
+    ) -> Any:
         try:
             return await agent.submit(run_id, stage_name, payload)
         except ProviderContractError as exc:
