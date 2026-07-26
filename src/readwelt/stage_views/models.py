@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from readwelt.domain.reading import ReadingStage
@@ -129,9 +130,15 @@ class StageView:
         )
 
     def to_mapping(self) -> dict[str, object]:
-        """Return the stable provider-facing representation."""
+        """Return the compact provider-facing representation.
 
-        return {
+        Full selection diagnostics remain in the persisted StageView artifact.
+        The provider already receives anchored text and upstream claims in the
+        surrounding evidence packet, so this projection references them instead
+        of duplicating their text.
+        """
+
+        mapping: dict[str, object] = {
             "schema_version": self.schema_version,
             "snapshot_id": self.snapshot_id,
             "stage": self.stage.value,
@@ -141,7 +148,6 @@ class StageView:
                     "node_id": item.node_id,
                     "kind": item.kind,
                     "label": item.label,
-                    "text": item.text,
                     "epistemic_status": item.epistemic_status,
                     "source_unit_ids": list(item.source_unit_ids),
                 }
@@ -162,45 +168,19 @@ class StageView:
                 {
                     "unit_id": item.unit_id,
                     "kind": item.kind,
-                    "text": item.text,
                     "anchor_ids": list(item.anchor_ids),
                     "ordinal": item.ordinal,
-                    "estimated_tokens": item.estimated_tokens,
+                    "selected_text_tokens": item.estimated_tokens,
                 }
                 for item in self.text_units
             ],
-            "upstream_claims": [
-                {
-                    "claim_id": item.claim_id,
-                    "text": item.text,
-                    "decision": item.decision,
-                    "anchor_ids": list(item.anchor_ids),
-                }
-                for item in self.upstream_claims
-            ],
+            "upstream_claim_ids": [item.claim_id for item in self.upstream_claims],
             "unresolved_conflict_ids": list(self.unresolved_conflict_ids),
             "missing_capabilities": list(self.missing_capabilities),
-            "capability_outcomes": [
-                {
-                    "backend_id": item.backend_id,
-                    "capability": item.capability,
-                    "status": item.status,
-                    "message": item.message,
-                }
-                for item in self.capability_outcomes
-            ],
             "coverage_complete": self.coverage_complete,
             "token_budget": self.token_budget,
-            "estimated_tokens": self.estimated_tokens,
-            "selection_reasons": [
-                {
-                    "object_type": item.object_type,
-                    "object_id": item.object_id,
-                    "reason": item.reason,
-                    "priority": item.priority,
-                }
-                for item in self.selection_reasons
-            ],
+            "selected_text_tokens": self.estimated_tokens,
+            "budget_scope": "selected_text",
             "locator_backend": self.locator_backend,
             "fallback_backend": self.fallback_backend,
             "lineage": {
@@ -210,3 +190,15 @@ class StageView:
             },
             "content_digest": self.content_digest,
         }
+        mapping["estimated_serialized_tokens"] = _serialized_token_estimate(mapping)
+        return mapping
+
+
+def _serialized_token_estimate(value: object) -> int:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return max(1, (len(encoded) + 3) // 4)

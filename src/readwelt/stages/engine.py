@@ -306,6 +306,7 @@ class SixStageReadingEngine:
         }
         if stage_view is not None:
             packet["stage_view"] = stage_view.to_mapping()
+        packet["estimated_evidence_tokens"] = _serialized_token_estimate(packet)
         return StageRequest(
             schema_version="1",
             run_id=evidence.run_id,
@@ -756,3 +757,13 @@ def _digest(value: object) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _serialized_token_estimate(value: object) -> int:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return max(1, (len(encoded) + 3) // 4)

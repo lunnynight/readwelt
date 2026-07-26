@@ -115,6 +115,7 @@ class StageViewProjector:
             )
 
         selected_ids = {unit.unit_id for unit in selected_units}
+        stage_kinds = frozenset(_STAGE_KIND_PRIORITY[context.stage])
         nodes = tuple(
             StageViewNode(
                 node_id=node.node_id,
@@ -127,7 +128,8 @@ class StageViewProjector:
                 ),
             )
             for node in build.graph.nodes
-            if selected_ids.intersection(node.source_unit_ids)
+            if node.kind in stage_kinds
+            and selected_ids.intersection(node.source_unit_ids)
         )
         selected_node_ids = {node.node_id for node in nodes}
         edges = tuple(
