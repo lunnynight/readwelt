@@ -232,6 +232,8 @@ CUDA 或 CPU，模型缓存在项目的 `.readwelt/cache/models`。文档向量�
 文件缓存在 `.readwelt/cache/embeddings`，跨进程复用且不需要数据库；查询则由阅读
 目的、阶段职责和已结算的上游 claims 共同生成。
 检索轨迹包含 lexical/dense rank、原始分数和 RRF 分数，会随 `StageRequest` 留存。
+当预算足以容纳全文时走 `full-coverage-v1` 快路径，保持原文顺序并完全跳过向量计算；
+hybrid 只在预算确实需要筛选证据时启动。
 详细边界见 [检索架构](docs/architecture/dense-retrieval.md)。
 
 ## 接口

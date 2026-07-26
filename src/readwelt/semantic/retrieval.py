@@ -124,6 +124,37 @@ class HybridRetriever:
                 f"retrieval plan requires unknown anchor ids: {sorted(unknown_required)}"
             )
         queries = tuple(query for query in plan.queries if query.strip())
+        total_tokens = sum(segment.statistics.token_count for segment in atlas.segments)
+        if plan.token_budget >= total_tokens:
+            anchors = tuple(segment.anchor for segment in atlas.segments)
+            covered_sections = tuple(dict.fromkeys(anchor.section_id for anchor in anchors))
+            return SemanticEvidencePacket(
+                schema_version="1",
+                snapshot_id=atlas.snapshot_id,
+                purpose=queries[0],
+                anchors=anchors,
+                retrieval_queries=queries,
+                omitted=(),
+                covered_section_ids=covered_sections,
+                omitted_section_ids=(),
+                token_budget=plan.token_budget,
+                estimated_tokens=total_tokens,
+                coverage_complete=atlas.coverage.full_source_covered,
+                stage=plan.stage,
+                retrieval_backend="full-coverage-v1",
+                hits=tuple(
+                    RetrievalHit(
+                        anchor_id=anchor.anchor_id,
+                        section_id=anchor.section_id,
+                        lexical_rank=ordinal,
+                        lexical_score=0.0,
+                        dense_rank=None,
+                        dense_score=None,
+                        fused_score=0.0,
+                    )
+                    for ordinal, anchor in enumerate(anchors, 1)
+                ),
+            )
         lexical_ranking = BM25Index(tuple(segment.tokens for segment in atlas.segments)).rank(
             tokenize(" ".join(queries))
         )

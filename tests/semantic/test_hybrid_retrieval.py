@@ -125,14 +125,35 @@ def test_document_embeddings_are_reused_across_stage_queries() -> None:
     retriever = HybridRetriever(dense_encoder=encoder)
     retriever.retrieve(
         atlas,
-        RetrievalPlan(ReadingStage.MAINLINE, ("文章主线",), token_budget=20),
+        RetrievalPlan(ReadingStage.MAINLINE, ("文章主线",), token_budget=8),
     )
     retriever.retrieve(
         atlas,
-        RetrievalPlan(ReadingStage.BOUNDARIES, ("市场无效",), token_budget=20),
+        RetrievalPlan(ReadingStage.BOUNDARIES, ("市场无效",), token_budget=8),
     )
 
     assert encoder.document_calls == 1
+
+
+def test_full_coverage_skips_dense_work_and_preserves_source_order() -> None:
+    snapshot, text = _snapshot(("价格反映信息。", "音乐组织旋律。"))
+    atlas = SemanticPreprocessor().prepare(snapshot, text)
+
+    class FailIfCalled(_MeaningEncoder):
+        def encode_documents(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
+            raise AssertionError("dense encoder should not run for a full-source packet")
+
+    packet = HybridRetriever(dense_encoder=FailIfCalled()).retrieve(
+        atlas,
+        RetrievalPlan(ReadingStage.MAINLINE, ("文章主线",), token_budget=10_000),
+    )
+
+    assert packet.retrieval_backend == "full-coverage-v1"
+    assert packet.coverage_complete
+    assert tuple(anchor.anchor_id for anchor in packet.anchors) == tuple(
+        segment.anchor.anchor_id for segment in atlas.segments
+    )
+    assert all(hit.dense_rank is None for hit in packet.hits)
 
 
 def test_document_embeddings_are_reused_across_retriever_processes(tmp_path: Path) -> None:
@@ -147,7 +168,7 @@ def test_document_embeddings_are_reused_across_retriever_processes(tmp_path: Pat
             return super().encode_documents(texts)
 
     encoder = CountingEncoder()
-    plan = RetrievalPlan(ReadingStage.BOUNDARIES, ("市场无效",), token_budget=20)
+    plan = RetrievalPlan(ReadingStage.BOUNDARIES, ("市场无效",), token_budget=8)
     first = HybridRetriever(dense_encoder=encoder, cache_dir=tmp_path).retrieve(atlas, plan)
     second = HybridRetriever(dense_encoder=encoder, cache_dir=tmp_path).retrieve(atlas, plan)
 
@@ -169,7 +190,7 @@ def test_corrupt_persistent_embedding_cache_is_rebuilt(tmp_path: Path) -> None:
             return super().encode_documents(texts)
 
     encoder = CountingEncoder()
-    plan = RetrievalPlan(ReadingStage.BOUNDARIES, ("市场无效",), token_budget=20)
+    plan = RetrievalPlan(ReadingStage.BOUNDARIES, ("市场无效",), token_budget=8)
     HybridRetriever(dense_encoder=encoder, cache_dir=tmp_path).retrieve(atlas, plan)
     next(tmp_path.glob("*.f32")).write_bytes(b"corrupt")
 

@@ -36,6 +36,10 @@ Stage-aware EvidencePacket ──> StageRequest ──> StageArtifact
 Sentence Transformers、未来的 ONNX 后端和 OpenAI-compatible embedding 服务
 可以替换，而不会改变阅读规则。
 
+预算足以容纳全部 anchors 时，`full-coverage-v1` 直接按原文顺序生成 packet，
+不执行 BM25、文档 embedding 或 query embedding。Hybrid retrieval 只处理
+“证据必须被删选”的情况。
+
 ## 为什么使用 hybrid，而不是 dense-only
 
 Dense 擅长中文释义和跨措辞召回；BM25 擅长人名、数字、术语和原文精确命中。
