@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -47,11 +48,15 @@ class DocumentRunner:
         if manifest_path.exists():
             existing = self._manifests.read(manifest_path)
             existing_snapshot = existing.get("snapshot")
-            if (
-                isinstance(existing_snapshot, dict)
-                and existing_snapshot.get("snapshot_id") == snapshot.snapshot_id
-            ):
-                return self._decode_snapshot(existing_snapshot)
+            if isinstance(existing_snapshot, dict):
+                existing_snapshot_id = existing_snapshot.get("snapshot_id")
+                if existing_snapshot_id == snapshot.snapshot_id:
+                    return self._decode_snapshot(existing_snapshot)
+                if snapshot.parent_snapshot_id is None and isinstance(existing_snapshot_id, str):
+                    snapshot = replace(
+                        snapshot,
+                        parent_snapshot_id=existing_snapshot_id,
+                    )
         snapshot_ref = self._artifacts.put_json(snapshot, artifact_type="source_snapshot")
         self._manifests.write(
             manifest_path,

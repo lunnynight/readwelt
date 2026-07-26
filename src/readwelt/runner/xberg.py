@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from readwelt.domain import SourceDocumentSnapshot
+from readwelt.runner.epub_outline import load_epub_outline
 from readwelt.runner.snapshot import snapshot_from_text
 from readwelt.storage import ArtifactStore
 
@@ -38,6 +39,7 @@ class XbergDocumentAdapter:
             mime_type_value if isinstance(mime_type_value, str) else "application/octet-stream"
         )
         metadata = getattr(document, "metadata", None)
+        outline = load_epub_outline(source) if source.suffix.casefold() == ".epub" else ()
         return snapshot_from_text(
             source=source,
             text=content,
@@ -47,6 +49,8 @@ class XbergDocumentAdapter:
             title=self._metadata_text(metadata, "title"),
             author=self._metadata_text(metadata, "author"),
             language=self._metadata_text(metadata, "language") or "und",
+            outline=outline,
+            snapshot_policy_version=("xberg-epub-ncx-v4" if outline else "1"),
         )
 
     @staticmethod

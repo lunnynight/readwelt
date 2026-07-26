@@ -160,8 +160,10 @@ $env:READWELT_API_BASE_URL = "https://api.example.com/v1"
 uv run readwelt read .\article.txt --provider api --json
 ```
 
-Xberg `1.0.0rc38` 负责结构化文档抽取；源文件不会被原地修改。所有运行状态默认保存
-在当前目录的 `./.readwelt`。
+Xberg `1.0.0rc38` 负责正文抽取；源文件不会被原地修改。对于 EPUB，Readwelt 还会
+读取容器内的 NCX 导航树，将 Xberg 的扁平段落恢复到真实章/节标题之下。解析策略
+版本进入 snapshot identity，因此结构修复会生成新 snapshot，不会被同正文 digest
+的旧缓存静默覆盖。所有运行状态默认保存在项目相对目录。
 
 ## 挂载到 Claude Code / Codex
 

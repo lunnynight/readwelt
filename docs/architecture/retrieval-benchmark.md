@@ -31,6 +31,33 @@ It must not be reported as evidence of production quality. A future
 `real_corpus` fixture should be sampled from licensed or user-provided articles,
 judged independently by at least two readers, and versioned separately.
 
+## First real-corpus acceptance run
+
+A user-provided Chinese EPUB, *第一性原理* by 李善友, is used locally and is
+not committed to the repository. Xberg extracted 99,415 characters and 901
+paragraph anchors. EPUB NCX enrichment recovered 64 body titles plus one
+frontmatter group.
+
+The first automatic acceptance task uses each NCX title as a query, excludes
+heading blocks from 747 body candidates, and treats paragraphs belonging to the
+same NCX section as relevant. This is a real-corpus **section-navigation**
+benchmark with silver membership labels, not an independently judged semantic
+relevance benchmark.
+
+On the local Windows release build at `k=10`:
+
+| scorer | Hit@10 | MRR | nDCG@10 | macro Recall@10 |
+|---|---:|---:|---:|---:|
+| BM25 | 0.8906 | 0.6349 | 0.3618 | 0.3063 |
+| BM25+ | 0.9062 | 0.6239 | 0.3607 | 0.3056 |
+| BM25L | 0.7656 | 0.5246 | 0.2910 | 0.2518 |
+
+BM25+ therefore has a small coverage advantage on this task, while BM25 places
+the first relevant paragraph slightly earlier. The provisional BM25+ default is
+a coverage-first policy; these results do not establish universal superiority.
+Paraphrase queries and independent human judgments remain necessary before
+selecting tokenizer or dense-retrieval policy.
+
 ## Metrics and timing
 
 The harness reports macro Recall@k, MRR, and graded nDCG@k overall and by category.
