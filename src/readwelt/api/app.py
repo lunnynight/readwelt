@@ -73,6 +73,15 @@ def create_app(
             },
         )
 
+    def not_found_error(resource: str, identifier: str) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "not_found",
+                "message": f"{resource} not found: {identifier}",
+            },
+        )
+
     @app.get("/health")
     async def health() -> dict[str, Any]:
         return {
@@ -182,6 +191,8 @@ def create_app(
     async def get_agent_session(run_id: str) -> Any:
         try:
             return await agent.current(run_id)
+        except FileNotFoundError as exc:
+            raise not_found_error("run", run_id) from exc
         except ProviderContractError as exc:
             raise request_error(exc) from exc
 
@@ -209,7 +220,10 @@ def create_app(
 
     @app.get("/v1/runs/{run_id}")
     async def get_run_status(run_id: str) -> Any:
-        return to_jsonable(await invoke(active_service, "get_run_status", run_id))
+        try:
+            return to_jsonable(await invoke(active_service, "get_run_status", run_id))
+        except FileNotFoundError as exc:
+            raise not_found_error("run", run_id) from exc
 
     @app.get("/v1/artifacts/{digest}")
     async def get_artifact(digest: str) -> Any:
