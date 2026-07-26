@@ -10,10 +10,12 @@ import struct
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, cast
 from uuid import uuid4
 
+from readwelt import _core
 from readwelt.domain.reading import LedgerDecision, ReadingClaim, ReadingStage, RetrievalHit
-from readwelt.semantic.lexical import BM25Index
+from readwelt.semantic.lexical import LexicalScorer, RetrievalIndex
 from readwelt.semantic.models import (
     OmittedEvidence,
     SemanticAtlas,
@@ -30,6 +32,13 @@ _STAGE_QUERIES: dict[ReadingStage, str] = {
     ReadingStage.BOUNDARIES: "适用边界 隐含假设 反例 替代解释 缺失证据",
     ReadingStage.TRANSFER: "不变机制 迁移条件 不可迁移因素 失败测试",
 }
+
+
+class _NativeDenseIndex(Protocol):
+    def rank(
+        self,
+        queries: list[list[float]],
+    ) -> tuple[list[float], list[tuple[int, float]]]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +109,7 @@ class HybridRetriever:
         dense_weight: float = 1.0,
         rrf_k: int = 60,
         cache_dir: str | Path | None = None,
+        lexical_scorer: LexicalScorer = LexicalScorer.BM25_PLUS,
     ) -> None:
         if lexical_weight <= 0 or dense_weight <= 0:
             raise ValueError("retrieval weights must be positive")
@@ -110,7 +120,10 @@ class HybridRetriever:
         self._dense_weight = dense_weight
         self._rrf_k = rrf_k
         self._cache_dir = Path(cache_dir) if cache_dir is not None else None
+        self._lexical_scorer = lexical_scorer
+        self._lexical_indexes: dict[str, RetrievalIndex] = {}
         self._document_cache: dict[str, tuple[tuple[float, ...], ...]] = {}
+        self._dense_indexes: dict[str, _NativeDenseIndex] = {}
 
     def retrieve(
         self,
@@ -155,27 +168,70 @@ class HybridRetriever:
                     for ordinal, anchor in enumerate(anchors, 1)
                 ),
             )
-        lexical_ranking = BM25Index(tuple(segment.tokens for segment in atlas.segments)).rank(
-            tokenize(" ".join(queries))
+        lexical_index = self._lexical_indexes.get(atlas.content_digest)
+        if lexical_index is None:
+            lexical_index = RetrievalIndex(
+                tuple(segment.tokens for segment in atlas.segments),
+                scorer=self._lexical_scorer,
+            )
+            self._lexical_indexes[atlas.content_digest] = lexical_index
+        lexical_ranking = lexical_index.rank(
+            tokenize(" ".join(queries)),
+            top_k=len(atlas.segments),
         )
         lexical_rank = {ordinal: rank for rank, (ordinal, _) in enumerate(lexical_ranking, 1)}
         lexical_score = dict(lexical_ranking)
 
         dense_ranking: tuple[tuple[int, float], ...] = ()
+        dense_scores: tuple[float, ...] = ()
         if self._dense_encoder is not None and atlas.segments:
-            dense_ranking = self._dense_ranking(atlas, queries)
+            dense_ranking, dense_scores = self._dense_ranking(atlas, queries)
         dense_rank = {ordinal: rank for rank, (ordinal, _) in enumerate(dense_ranking, 1)}
         dense_score = dict(dense_ranking)
 
-        fused: dict[int, float] = {}
-        for ordinal in range(len(atlas.segments)):
-            score = self._lexical_weight / (self._rrf_k + lexical_rank[ordinal])
-            if ordinal in dense_rank:
-                score += self._dense_weight / (self._rrf_k + dense_rank[ordinal])
-            fused[ordinal] = score
+        if dense_scores:
+            fused = dict(
+                _native_hybrid_rrf(
+                    document_count=len(atlas.segments),
+                    lexical_ranking=lexical_ranking,
+                    dense_scores=dense_scores,
+                    top_k=len(atlas.segments),
+                    fusion=(
+                        self._lexical_weight,
+                        self._dense_weight,
+                        float(self._rrf_k),
+                    ),
+                )
+            )
+        else:
+            fused = {
+                ordinal: self._lexical_weight / (self._rrf_k + rank)
+                for ordinal, rank in lexical_rank.items()
+            }
 
-        ordered = _section_balanced_order(atlas, fused, plan.required_anchor_ids)
-        selected, omitted, consumed = _apply_budget(atlas, ordered, plan.token_budget)
+        section_numbers: dict[str, int] = {}
+        for segment in atlas.segments:
+            section_numbers.setdefault(segment.anchor.section_id, len(section_numbers))
+        priority_anchor_ids = set(plan.required_anchor_ids) | set(
+            atlas.coverage.orientation_anchor_ids
+        )
+        selected_ordinals, omitted_ordinals, consumed = _core.select_evidence(
+            [fused[ordinal] for ordinal in range(len(atlas.segments))],
+            [section_numbers[segment.anchor.section_id] for segment in atlas.segments],
+            [segment.anchor.anchor_id in priority_anchor_ids for segment in atlas.segments],
+            [segment.statistics.token_count for segment in atlas.segments],
+            plan.token_budget,
+        )
+        selected = tuple(int(ordinal) for ordinal in selected_ordinals)
+        omitted = tuple(
+            OmittedEvidence(
+                anchor_id=atlas.segments[ordinal].anchor.anchor_id,
+                section_id=atlas.segments[ordinal].anchor.section_id,
+                reason="token_budget",
+                estimated_tokens=atlas.segments[ordinal].statistics.token_count,
+            )
+            for ordinal in omitted_ordinals
+        )
         anchors = tuple(atlas.segments[ordinal].anchor for ordinal in selected)
         covered_sections = tuple(dict.fromkeys(anchor.section_id for anchor in anchors))
         all_sections = tuple(section_id for section_id, _ in atlas.coverage.section_anchor_ids)
@@ -194,7 +250,11 @@ class HybridRetriever:
             )
             for ordinal in selected
         )
-        backend = "hybrid-rrf-v1" if self._dense_encoder is not None else atlas.lexical_backend
+        backend = (
+            "rust-hybrid-rrf-v2"
+            if self._dense_encoder is not None
+            else f"rust-{self._lexical_scorer.value}-v2"
+        )
         return SemanticEvidencePacket(
             schema_version="1",
             snapshot_id=atlas.snapshot_id,
@@ -220,28 +280,41 @@ class HybridRetriever:
         self,
         atlas: SemanticAtlas,
         queries: tuple[str, ...],
-    ) -> tuple[tuple[int, float], ...]:
+    ) -> tuple[tuple[tuple[int, float], ...], tuple[float, ...]]:
         assert self._dense_encoder is not None
-        documents = self._document_cache.get(atlas.content_digest)
-        if documents is None:
-            documents = self._load_cached_vectors(atlas)
-        if documents is None:
-            documents = self._dense_encoder.encode_documents(
-                tuple(segment.anchor.exact_text for segment in atlas.segments)
+        index = self._dense_indexes.get(atlas.content_digest)
+        if index is None:
+            documents = self._document_cache.get(atlas.content_digest)
+            if documents is None:
+                documents = self._load_cached_vectors(atlas)
+            if documents is None:
+                documents = self._dense_encoder.encode_documents(
+                    tuple(segment.anchor.exact_text for segment in atlas.segments)
+                )
+                _validate_vectors(
+                    documents,
+                    len(atlas.segments),
+                    self._dense_encoder.dimensions,
+                )
+                self._store_cached_vectors(atlas, documents)
+                self._document_cache[atlas.content_digest] = documents
+            index = cast(
+                _NativeDenseIndex,
+                _core.DenseIndex(
+                    [list(document) for document in documents],
+                    self._dense_encoder.dimensions,
+                ),
             )
-            _validate_vectors(documents, len(atlas.segments), self._dense_encoder.dimensions)
-            self._store_cached_vectors(atlas, documents)
-            self._document_cache[atlas.content_digest] = documents
+            self._dense_indexes[atlas.content_digest] = index
         query_vectors = self._dense_encoder.encode_queries(queries)
         _validate_vectors(query_vectors, len(queries), self._dense_encoder.dimensions)
-        scored = tuple(
-            (
-                ordinal,
-                max(_cosine(query, document) for query in query_vectors),
-            )
-            for ordinal, document in enumerate(documents)
+        scores, ranking = index.rank(
+            [list(query) for query in query_vectors],
         )
-        return tuple(sorted(scored, key=lambda item: (-item[1], item[0])))
+        return (
+            tuple((int(ordinal), float(score)) for ordinal, score in ranking),
+            tuple(float(score) for score in scores),
+        )
 
     def _cache_key(self, atlas: SemanticAtlas) -> str:
         assert self._dense_encoder is not None
@@ -325,6 +398,24 @@ class HybridRetriever:
         os.replace(manifest_temp, manifest_path)
 
 
+def _native_hybrid_rrf(
+    *,
+    document_count: int,
+    lexical_ranking: tuple[tuple[int, float], ...],
+    dense_scores: tuple[float, ...],
+    top_k: int,
+    fusion: tuple[float, float, float],
+) -> tuple[tuple[int, float], ...]:
+    value = _core.hybrid_rrf(
+        document_count,
+        list(lexical_ranking),
+        list(dense_scores),
+        top_k,
+        fusion,
+    )
+    return tuple((int(ordinal), float(score)) for ordinal, score in value)
+
+
 def _validate_vectors(
     vectors: tuple[tuple[float, ...], ...],
     expected_count: int,
@@ -338,78 +429,3 @@ def _validate_vectors(
         raise ValueError("encoder returned an unexpected vector dimension")
     if any(not math.isfinite(value) for vector in vectors for value in vector):
         raise ValueError("encoder returned a non-finite value")
-
-
-def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
-    left_norm = math.sqrt(sum(value * value for value in left))
-    right_norm = math.sqrt(sum(value * value for value in right))
-    if left_norm == 0.0 or right_norm == 0.0:
-        return 0.0
-    return sum(a * b for a, b in zip(left, right, strict=True)) / (left_norm * right_norm)
-
-
-def _section_balanced_order(
-    atlas: SemanticAtlas,
-    scores: dict[int, float],
-    required_anchor_ids: tuple[str, ...],
-) -> tuple[int, ...]:
-    section_order: list[str] = []
-    candidates: dict[str, list[int]] = {}
-    for ordinal, segment in enumerate(atlas.segments):
-        section_id = segment.anchor.section_id
-        if section_id not in candidates:
-            section_order.append(section_id)
-            candidates[section_id] = []
-        candidates[section_id].append(ordinal)
-    for values in candidates.values():
-        values.sort(key=lambda ordinal: (-scores[ordinal], ordinal))
-
-    required = set(required_anchor_ids) | set(atlas.coverage.orientation_anchor_ids)
-    leading = [
-        ordinal
-        for ordinal, segment in enumerate(atlas.segments)
-        if segment.anchor.anchor_id in required
-    ]
-    leading.sort(key=lambda ordinal: (-scores[ordinal], ordinal))
-    leading_set = set(leading)
-    for values in candidates.values():
-        values[:] = [ordinal for ordinal in values if ordinal not in leading_set]
-
-    ordered = list(leading)
-    while any(candidates.values()):
-        active = [section_id for section_id in section_order if candidates[section_id]]
-        active.sort(
-            key=lambda section_id: (
-                -scores[candidates[section_id][0]],
-                section_order.index(section_id),
-            )
-        )
-        for section_id in active:
-            ordered.append(candidates[section_id].pop(0))
-    return tuple(ordered)
-
-
-def _apply_budget(
-    atlas: SemanticAtlas,
-    ordered: tuple[int, ...],
-    token_budget: int,
-) -> tuple[tuple[int, ...], tuple[OmittedEvidence, ...], int]:
-    selected: list[int] = []
-    omitted: list[OmittedEvidence] = []
-    consumed = 0
-    for ordinal in ordered:
-        segment = atlas.segments[ordinal]
-        cost = segment.statistics.token_count
-        if consumed + cost <= token_budget:
-            selected.append(ordinal)
-            consumed += cost
-        else:
-            omitted.append(
-                OmittedEvidence(
-                    anchor_id=segment.anchor.anchor_id,
-                    section_id=segment.anchor.section_id,
-                    reason="token_budget",
-                    estimated_tokens=cost,
-                )
-            )
-    return tuple(selected), tuple(omitted), consumed

@@ -1,6 +1,7 @@
 """Public deterministic semantic preprocessing facade."""
 
 from readwelt.domain.reading import RetrievalHit
+from readwelt.semantic.lexical import LexicalScorer, RetrievalIndex
 from readwelt.semantic.local_dense import (
     DEFAULT_DENSE_MODEL,
     SentenceTransformerDenseEncoder,
@@ -45,4 +46,6 @@ __all__ = [
     "build_evidence_packet",
     "build_stage_retrieval_plan",
     "HybridRetriever",
+    "LexicalScorer",
+    "RetrievalIndex",
 ]

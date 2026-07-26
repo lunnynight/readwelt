@@ -18,12 +18,26 @@ Dense retrieval 不是给 `SemanticAtlas` 增加一列向量。Readwelt 把
 ```text
 SemanticAtlas
     │
-    ├── Rust BM25 ───────────────┐
-    │                            ├── RRF ── 章节平衡 ── token budget
-    └── DenseEncoder（可选）─────┘                         │
+    ├── Rust 可复用 lexical index（BM25+ 默认）─┐
+    │                                           ├── Rust RRF
+    └── DenseEncoder（可选）→ Rust DenseIndex ──┘       │
+                                                        ▼
+                                      Rust 章节平衡 + token budget
+                                                        │
                                                          ▼
 Stage-aware EvidencePacket ──> StageRequest ──> StageArtifact
 ```
+
+Python 只负责构造 `RetrievalPlan`、调用模型适配器和投影领域对象。倒排索引、
+BM25/BM25+/BM25L 计分、dense cosine、RRF、章节轮询与预算裁剪都在
+`readwelt-core` 中执行。索引按 atlas digest 在进程内复用；一次建索引后，六阶段只
+提交 query 和 top-k，不再逐查询重建词表，也不把全量文档重新穿过 PyO3 边界。
+
+`RetrievalIndex` 接收任意 token 序列，并从传入文档动态建立词表；内核没有中文
+关键词白名单或固定业务词典。`readwelt-zh-bigram-en-word-v1` 只是当前默认、
+可版本化的 tokenizer。Atlas 同时保存 tokenizer version 和生成后的 tokens，因此
+未来可替换分词器或加入领域词典，而不改变 scorer 与索引接口；不同 tokenizer 的
+召回差异必须进入同一真实语料 benchmark 比较。
 
 `DenseEncoder` 只有两个任务接口：
 
@@ -42,10 +56,15 @@ Sentence Transformers、未来的 ONNX 后端和 OpenAI-compatible embedding 服
 
 ## 为什么使用 hybrid，而不是 dense-only
 
-Dense 擅长中文释义和跨措辞召回；BM25 擅长人名、数字、术语和原文精确命中。
+Dense 擅长中文释义和跨措辞召回；BM25 系列擅长人名、数字、术语和原文精确命中。
 两者原始分数量纲不同，所以使用 Reciprocal Rank Fusion，而不是直接相加余弦分数
 与 BM25 分数。融合后仍执行章节平衡和 orientation anchor 保底，避免相关性排序把
 整章或文章开头完全挤掉。
+
+当前 lexical 默认是 BM25+。理由是它对长锚点中的匹配提供长度归一化后的正下界，
+而 Readwelt 的锚点长度可能从段落跨到整节；这是一项结构性选择，不是已经被质量
+基准证明的胜出。合成中文 seed 上 BM25、BM25+、BM25L 的质量指标目前相同，默认值
+要在真实中文语料和独立相关性标注加入后重新裁决。
 
 真实 smoke test 中，查询“市场无效”对三个候选的 dense cosine 分数为：
 
@@ -67,6 +86,8 @@ Dense 擅长中文释义和跨措辞召回；BM25 擅长人名、数字、术语
   或其他数据库。
 - 文档向量位于 `.readwelt/cache/embeddings`；manifest 不匹配、尺寸错误或文件
   损坏时会重新编码，不会读取成另一模型的向量。
+- lexical index 和 dense index 在单次进程内按 atlas digest 复用；`.f32` 文档向量
+  可跨进程复用。lexical 跨进程持久化和 dense mmap 尚未实现，不把它们写成现有能力。
 - `READWELT_DENSE_DEVICE=auto` 优先 CUDA，缺少 CUDA 时退回 CPU。
 - `transformers` 固定在 4.x；GTE 当前固定 revision 的 remote code 与
   Transformers 5.x 存在实际运行兼容问题。

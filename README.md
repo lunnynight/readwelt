@@ -205,11 +205,11 @@ Readwelt 先构建非生成式 `SemanticAtlas`：
 ```text
 Xberg 结构化输入
         ↓
-Rust 规范化 · SHA-256 · MinHash · BM25 · coverage
+Rust 规范化 · SHA-256 · MinHash · 可复用 lexical index · coverage
         ↓
 六阶段 RetrievalPlan
         ↓
-BM25 + 可选 dense · RRF 融合 · 章节覆盖
+BM25+（可切 BM25/BM25L）+ 可选 dense · Rust RRF · Rust 章节覆盖
         ↓
 带命中轨迹与显式遗漏的 EvidencePacket
         ↓
@@ -219,7 +219,9 @@ BM25 + 可选 dense · RRF 融合 · 章节覆盖
 这层计算不生成摘要。它让模型把算力留给真正需要理解的部分，同时明确记录哪些章节
 进入了证据包、哪些内容仍然遗漏。
 
-默认安装仍只启用 Rust BM25/coverage，不下载模型。需要中文释义召回时：
+默认安装仍只启用 Rust BM25+/coverage，不下载模型。一次建索引后，六阶段复用同一
+native index；计分、dense cosine、RRF 和预算裁剪都不走 Python 循环。需要中文释义
+召回时：
 
 ```powershell
 uv sync --extra all --extra dense
@@ -235,6 +237,8 @@ CUDA 或 CPU，模型缓存在项目的 `.readwelt/cache/models`。文档向量�
 当预算足以容纳全文时走 `full-coverage-v1` 快路径，保持原文顺序并完全跳过向量计算；
 hybrid 只在预算确实需要筛选证据时启动。
 详细边界见 [检索架构](docs/architecture/dense-retrieval.md)。
+BM25、BM25+、BM25L 的可重复中文 seed 验收和真实语料边界见
+[检索基准](docs/architecture/retrieval-benchmark.md)。
 
 ## 接口
 

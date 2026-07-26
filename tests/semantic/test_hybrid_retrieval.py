@@ -107,7 +107,7 @@ def test_dense_channel_recovers_chinese_paraphrase_that_lexical_misses() -> None
     assert lexical.hits[0].anchor_id != atlas.segments[0].anchor.anchor_id
     assert hybrid.hits[0].anchor_id == atlas.segments[0].anchor.anchor_id
     assert hybrid.hits[0].dense_rank == 1
-    assert hybrid.retrieval_backend == "hybrid-rrf-v1"
+    assert hybrid.retrieval_backend == "rust-hybrid-rrf-v2"
 
 
 def test_document_embeddings_are_reused_across_stage_queries() -> None:

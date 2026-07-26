@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 blake2.workspace = true
+rayon.workspace = true
 serde.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
@@ -15,4 +16,8 @@ unicode-normalization.workspace = true
 
 [[bench]]
 name = "semantic_batch"
+harness = false
+
+[[bench]]
+name = "retrieval_core"
 harness = false
