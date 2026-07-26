@@ -21,6 +21,7 @@ from readwelt.domain import (
     ModelStatus,
     PublicationStatus,
     ReadingRun,
+    ReadingStage,
     SourceDocumentSnapshot,
     StageArtifact,
     stable_id,
@@ -41,7 +42,14 @@ from readwelt.providers import (
     configured_model_providers,
 )
 from readwelt.runner import DocumentRunner
-from readwelt.semantic import SemanticAtlas, SemanticPreprocessor, build_evidence_packet
+from readwelt.semantic import (
+    DenseEncoder,
+    HybridRetriever,
+    SemanticAtlas,
+    SemanticPreprocessor,
+    build_stage_retrieval_plan,
+    configured_dense_encoder,
+)
 from readwelt.stages import SixStageReadingEngine
 from readwelt.storage import ArtifactStore, EventLog, ManifestStore, ProjectLayout
 
@@ -71,6 +79,7 @@ class ReadweltApplicationService:
         candidate_providers: Sequence[CandidateProvider] | None = None,
         provider_resolver: ProviderResolver | None = None,
         semantic_preprocessor: SemanticPreprocessor | None = None,
+        dense_encoder: DenseEncoder | None = None,
     ) -> None:
         self._layout = ProjectLayout.resolve(project, base_directory=base_directory)
         self._layout.initialize()
@@ -85,6 +94,14 @@ class ReadweltApplicationService:
         self._manifests = ManifestStore()
         self._events = EventLog()
         self._semantic = semantic_preprocessor or SemanticPreprocessor()
+        self._retriever = HybridRetriever(
+            dense_encoder=(
+                dense_encoder
+                if dense_encoder is not None
+                else configured_dense_encoder(self._layout.root)
+            ),
+            cache_dir=self._layout.root / "cache" / "embeddings",
+        )
         self._mailbox = ExternalAgentMailboxProvider(self._layout)
         self._configured_providers = (
             configured_model_providers()
@@ -363,7 +380,12 @@ class ReadweltApplicationService:
             if token_budget is not None
             else sum(segment.statistics.token_count for segment in atlas.segments)
         )
-        semantic_packet = build_evidence_packet(atlas, purpose, effective_budget)
+        base_plan = build_stage_retrieval_plan(
+            ReadingStage.MAINLINE,
+            purpose=purpose,
+            token_budget=effective_budget,
+        )
+        semantic_packet = self._retriever.retrieve(atlas, base_plan)
         evidence = cast(EvidencePacket, semantic_packet.to_stage_packet(run_id))
         initial_artifacts = self._run_store.load_stage_artifacts(run_id)
         if selection.mode is ProviderMode.AGENT_TAKEOVER:
@@ -375,6 +397,28 @@ class ReadweltApplicationService:
             self._run_store,
         )
         engine = SixStageReadingEngine(provider)
+
+        def evidence_for_stage(
+            stage: ReadingStage,
+            artifacts: Sequence[StageArtifact],
+        ) -> EvidencePacket:
+            if stage is ReadingStage.MAINLINE and not artifacts:
+                return evidence
+            if stage is ReadingStage.TRANSFER and artifacts:
+                upstream_claims = artifacts[-1].accepted_claims
+            else:
+                upstream_claims = tuple(
+                    claim for artifact in artifacts for claim in artifact.accepted_claims
+                )
+            plan = build_stage_retrieval_plan(
+                stage,
+                purpose=purpose,
+                token_budget=effective_budget,
+                upstream_claims=upstream_claims,
+            )
+            packet = self._retriever.retrieve(atlas, plan)
+            return cast(EvidencePacket, packet.to_stage_packet(run_id))
+
         source_ref = self._artifacts.put_json(snapshot, artifact_type="source_snapshot")
         manifest_path = self._layout.run_manifest(run_id)
         if manifest_path.exists():
@@ -419,6 +463,7 @@ class ReadweltApplicationService:
                 evidence,
                 initial_artifacts=initial_artifacts,
                 artifact_sink=persist_stage,
+                evidence_factory=evidence_for_stage,
             )
         except AgentInputRequired as exc:
             persisted = self._runner.get(run_id)

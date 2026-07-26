@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from readwelt.domain.reading import ReadingStage, RetrievalHit
 from readwelt.domain.spans import SpanAnchor
 
 
@@ -98,6 +99,9 @@ class SemanticEvidencePacket:
     token_budget: int
     estimated_tokens: int
     coverage_complete: bool
+    stage: ReadingStage | None = None
+    retrieval_backend: str = "rust-bm25-v1"
+    hits: tuple[RetrievalHit, ...] = ()
 
     def to_mapping(self) -> dict[str, Any]:
         """Return a stable primitive mapping suitable for stage/provider boundaries."""
@@ -105,6 +109,8 @@ class SemanticEvidencePacket:
             "schema_version": self.schema_version,
             "snapshot_id": self.snapshot_id,
             "purpose": self.purpose,
+            "stage": self.stage.value if self.stage is not None else None,
+            "retrieval_backend": self.retrieval_backend,
             "anchor_ids": [anchor.anchor_id for anchor in self.anchors],
             "anchors": [
                 {
@@ -135,6 +141,18 @@ class SemanticEvidencePacket:
             "token_budget": self.token_budget,
             "estimated_tokens": self.estimated_tokens,
             "coverage_complete": self.coverage_complete,
+            "hits": [
+                {
+                    "anchor_id": hit.anchor_id,
+                    "section_id": hit.section_id,
+                    "lexical_rank": hit.lexical_rank,
+                    "lexical_score": hit.lexical_score,
+                    "dense_rank": hit.dense_rank,
+                    "dense_score": hit.dense_score,
+                    "fused_score": hit.fused_score,
+                }
+                for hit in self.hits
+            ],
         }
 
     def to_stage_packet(self, run_id: str) -> object:
@@ -149,4 +167,7 @@ class SemanticEvidencePacket:
             omitted_anchor_ids=tuple(item.anchor_id for item in self.omitted),
             coverage_complete=self.coverage_complete,
             token_budget=self.token_budget,
+            stage=self.stage,
+            retrieval_backend=self.retrieval_backend,
+            retrieval_hits=self.hits,
         )

@@ -168,6 +168,59 @@ def test_executes_fixed_order_and_enforces_evidence_boundaries() -> None:
     )
 
 
+def test_stage_evidence_factory_tracks_settled_artifact_prefix() -> None:
+    snapshot, packet, anchor = _snapshot_and_packet()
+    provider = FakeCandidateProvider(anchor.anchor_id)
+    observed_prefixes: list[int] = []
+
+    def evidence_factory(
+        stage: ReadingStage,
+        artifacts: tuple[object, ...] | list[object],
+    ) -> EvidencePacket:
+        observed_prefixes.append(len(artifacts))
+        return replace(
+            packet,
+            stage=stage,
+            retrieval_queries=(f"query:{stage.value}",),
+            retrieval_backend="hybrid-rrf-v1",
+        )
+
+    bundle = asyncio.run(
+        SixStageReadingEngine(provider).run(
+            snapshot,
+            packet,
+            evidence_factory=evidence_factory,
+        )
+    )
+
+    assert bundle.execution_status is ExecutionStatus.COMPLETED
+    assert observed_prefixes == [0, 1, 2, 3, 4, 5]
+    assert [request.evidence_packet["retrieval_queries"][0] for request in provider.requests] == [
+        f"query:{stage.value}" for stage in ReadingStage
+    ]
+    assert all(
+        request.evidence_packet["retrieval_backend"] == "hybrid-rrf-v1"
+        for request in provider.requests
+    )
+
+
+def test_claim_cannot_cite_snapshot_anchor_omitted_from_stage_packet() -> None:
+    snapshot, packet, anchor = _snapshot_and_packet()
+    provider = FakeCandidateProvider(anchor.anchor_id)
+    omitted_packet = replace(
+        packet,
+        anchors=(),
+        omitted_anchor_ids=(anchor.anchor_id,),
+        coverage_complete=False,
+    )
+
+    bundle = asyncio.run(SixStageReadingEngine(provider).run(snapshot, omitted_packet))
+
+    assert bundle.execution_status is ExecutionStatus.FAILED
+    assert bundle.failure is not None
+    assert "outside the admitted evidence packet" in bundle.failure
+
+
 def test_critical_internal_gap_is_preserved_as_underdetermined() -> None:
     snapshot, packet, anchor = _snapshot_and_packet()
     provider = FakeCandidateProvider(
@@ -197,7 +250,7 @@ def test_unknown_anchor_freezes_a_failed_bundle_without_later_stages() -> None:
     assert bundle.execution_status is ExecutionStatus.FAILED
     assert bundle.epistemic_status is EpistemicStatus.INVALID
     assert bundle.failure is not None
-    assert "unknown anchor ids" in bundle.failure
+    assert "outside the admitted evidence packet" in bundle.failure
     assert len(bundle.artifacts) == 1
     assert [request.stage for request in provider.requests] == [
         ReadingStage.MAINLINE.value,

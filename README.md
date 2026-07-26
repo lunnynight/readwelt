@@ -130,7 +130,7 @@ Readwelt 的产品目的**。
 ```powershell
 git clone https://github.com/lunnynight/readwelt.git
 cd readwelt
-uv sync --all-extras
+uv sync --extra all
 ```
 
 先导入文章并建立不调用生成模型的语义准备结果：
@@ -207,7 +207,11 @@ Xberg 结构化输入
         ↓
 Rust 规范化 · SHA-256 · MinHash · BM25 · coverage
         ↓
-按章节平衡的 EvidencePacket
+六阶段 RetrievalPlan
+        ↓
+BM25 + 可选 dense · RRF 融合 · 章节覆盖
+        ↓
+带命中轨迹与显式遗漏的 EvidencePacket
         ↓
 六阶段生成式理解
 ```
@@ -215,8 +219,20 @@ Rust 规范化 · SHA-256 · MinHash · BM25 · coverage
 这层计算不生成摘要。它让模型把算力留给真正需要理解的部分，同时明确记录哪些章节
 进入了证据包、哪些内容仍然遗漏。
 
-当前默认实现是 Rust 语义分析 + BM25/coverage。embedding 已保留窄 adapter；
-dense retrieval、reranker 与自动外部研究仍属于后续 benchmark 路线。
+默认安装仍只启用 Rust BM25/coverage，不下载模型。需要中文释义召回时：
+
+```powershell
+uv sync --extra all --extra dense
+$env:READWELT_DENSE_MODEL = "auto"
+uv run readwelt read .\article.txt --provider local --json
+```
+
+`auto` 使用固定 revision 的 `Alibaba-NLP/gte-multilingual-base`，运行时自动选择
+CUDA 或 CPU，模型缓存在项目的 `.readwelt/cache/models`。文档向量以版本化 `.f32`
+文件缓存在 `.readwelt/cache/embeddings`，跨进程复用且不需要数据库；查询则由阅读
+目的、阶段职责和已结算的上游 claims 共同生成。
+检索轨迹包含 lexical/dense rank、原始分数和 RRF 分数，会随 `StageRequest` 留存。
+详细边界见 [检索架构](docs/architecture/dense-retrieval.md)。
 
 ## 接口
 

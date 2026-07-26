@@ -34,7 +34,7 @@ jobs:
           enable-cache: true
 
       - name: Install project
-        run: uv sync --all-extras --locked
+        run: uv sync --extra all --locked
 
       - name: Check Python
         run: |

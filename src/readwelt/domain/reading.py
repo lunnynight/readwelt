@@ -27,6 +27,17 @@ class LedgerDecision(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class RetrievalHit:
+    anchor_id: str
+    section_id: str
+    lexical_rank: int
+    lexical_score: float
+    dense_rank: int | None
+    dense_score: float | None
+    fused_score: float
+
+
+@dataclass(frozen=True, slots=True)
 class EvidencePacket:
     """Bounded evidence made available to one pipeline execution.
 
@@ -42,6 +53,9 @@ class EvidencePacket:
     coverage_complete: bool = True
     external_evidence: tuple[str, ...] = ()
     token_budget: int = 0
+    stage: ReadingStage | None = None
+    retrieval_backend: str = "rust-bm25-v1"
+    retrieval_hits: tuple[RetrievalHit, ...] = ()
 
     def __post_init__(self) -> None:
         if self.token_budget < 0:
@@ -50,6 +64,11 @@ class EvidencePacket:
             raise ValueError("evidence anchor ids must be unique")
         if len(set(self.omitted_anchor_ids)) != len(self.omitted_anchor_ids):
             raise ValueError("omitted evidence anchor ids must be unique")
+        hit_ids = tuple(hit.anchor_id for hit in self.retrieval_hits)
+        if len(set(hit_ids)) != len(hit_ids):
+            raise ValueError("retrieval hit anchor ids must be unique")
+        if not set(hit_ids).issubset(anchor.anchor_id for anchor in self.anchors):
+            raise ValueError("retrieval hits must refer to admitted evidence anchors")
 
 
 @dataclass(frozen=True, slots=True)

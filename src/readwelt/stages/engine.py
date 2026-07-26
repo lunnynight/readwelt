@@ -130,6 +130,10 @@ _RESPONSE_SCHEMA: Mapping[str, Any] = {
 }
 
 StageArtifactSink = Callable[[StageArtifact], Awaitable[None]]
+StageEvidenceFactory = Callable[
+    [ReadingStage, Sequence[StageArtifact]],
+    EvidencePacket,
+]
 
 
 class SixStageReadingEngine:
@@ -145,6 +149,7 @@ class SixStageReadingEngine:
         *,
         initial_artifacts: Sequence[StageArtifact] = (),
         artifact_sink: StageArtifactSink | None = None,
+        evidence_factory: StageEvidenceFactory | None = None,
     ) -> ReadingBundle:
         if evidence.run_id == "":
             raise ValueError("evidence run_id is required")
@@ -159,10 +164,18 @@ class SixStageReadingEngine:
             transitions.append(stage.value)
             eligible = self._eligible_upstream_claims(stage, artifacts)
             try:
+                stage_evidence = (
+                    evidence_factory(stage, artifacts) if evidence_factory is not None else evidence
+                )
+                if stage_evidence.run_id != evidence.run_id:
+                    raise ValueError("stage evidence belongs to a different run")
+                if stage_evidence.stage is not None and stage_evidence.stage is not stage:
+                    raise ValueError("stage evidence belongs to a different reading stage")
+                anchor_ids = self._validate_evidence(snapshot, stage_evidence)
                 request = self._build_request(
                     stage=stage,
                     snapshot=snapshot,
-                    evidence=evidence,
+                    evidence=stage_evidence,
                     artifacts=artifacts,
                     upstream_claims=eligible,
                 )
@@ -177,7 +190,7 @@ class SixStageReadingEngine:
                     known_claim_ids=known_claim_ids,
                 )
                 if stage is ReadingStage.MAINLINE:
-                    artifact = self._add_entry_gaps(artifact, snapshot, evidence)
+                    artifact = self._add_entry_gaps(artifact, snapshot, stage_evidence)
                 if stage is ReadingStage.STRUCTURE:
                     artifacts.append(artifact)
                     if artifact_sink is not None:
@@ -246,7 +259,10 @@ class SixStageReadingEngine:
         all_anchors = (*section_anchors, *evidence.anchors)
         if any(anchor.snapshot_id != snapshot.snapshot_id for anchor in all_anchors):
             raise ValueError("all evidence anchors must belong to the source snapshot")
-        return frozenset(anchor.anchor_id for anchor in all_anchors)
+        source_anchor_ids = frozenset(anchor.anchor_id for anchor in section_anchors)
+        if any(anchor.anchor_id not in source_anchor_ids for anchor in evidence.anchors):
+            raise ValueError("evidence anchor does not belong to the source snapshot")
+        return frozenset(anchor.anchor_id for anchor in evidence.anchors)
 
     @staticmethod
     def _eligible_upstream_claims(
@@ -292,6 +308,19 @@ class SixStageReadingEngine:
             "language": snapshot.language,
             "normalized_text_ref": snapshot.normalized_text_ref,
             "retrieval_queries": list(evidence.retrieval_queries),
+            "retrieval_backend": evidence.retrieval_backend,
+            "retrieval_hits": [
+                {
+                    "anchor_id": hit.anchor_id,
+                    "section_id": hit.section_id,
+                    "lexical_rank": hit.lexical_rank,
+                    "lexical_score": hit.lexical_score,
+                    "dense_rank": hit.dense_rank,
+                    "dense_score": hit.dense_score,
+                    "fused_score": hit.fused_score,
+                }
+                for hit in evidence.retrieval_hits
+            ],
             "coverage_complete": evidence.coverage_complete,
             "omitted_anchor_ids": list(evidence.omitted_anchor_ids),
             "anchors": [
@@ -419,7 +448,9 @@ class SixStageReadingEngine:
             )
         unknown_anchors = set(anchors) - allowed_anchor_ids
         if unknown_anchors:
-            raise ValueError(f"unknown anchor ids: {sorted(unknown_anchors)}")
+            raise ValueError(
+                f"anchor ids outside the admitted evidence packet: {sorted(unknown_anchors)}"
+            )
         unknown_sources = set(source_claim_ids) - allowed_source_claim_ids
         if unknown_sources:
             raise ValueError(f"ineligible source claim ids: {sorted(unknown_sources)}")

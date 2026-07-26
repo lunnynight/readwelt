@@ -12,6 +12,7 @@ from readwelt.domain.reading import (
     ReadingClaimLedger,
     ReadingGap,
     ReadingStage,
+    RetrievalHit,
     StageArtifact,
 )
 from readwelt.domain.run import ReadingRun
@@ -40,6 +41,7 @@ __all__ = [
     "ReadingGap",
     "ReadingRun",
     "ReadingStage",
+    "RetrievalHit",
     "SourceDocumentSnapshot",
     "SpanAnchor",
     "StageArtifact",
