@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from benchmarks.articlegraph.corpus import (
     REQUIRED_FEATURES,
     REQUIRED_FORMATS,
@@ -16,7 +18,37 @@ from benchmarks.articlegraph.corpus_prepare import prepare_epub
 _MANIFEST = Path(__file__).parents[2] / "benchmarks" / "articlegraph" / "corpus_manifest.json"
 
 
+def _manifest_cases() -> list[dict[str, object]]:
+    payload = json.loads(_MANIFEST.read_text(encoding="utf-8"))
+    return payload["cases"]
+
+
+def _require_case_sources(*case_ids: str) -> None:
+    selected = {
+        str(case["id"]): case
+        for case in _manifest_cases()
+        if not case_ids or str(case["id"]) in case_ids
+    }
+    missing = [
+        case_id
+        for case_id, case in selected.items()
+        if not (_MANIFEST.parent / str(case["path"])).resolve().is_file()
+    ]
+    if missing:
+        pytest.skip("real ArticleGraph corpus is not materialized: " + ", ".join(missing))
+
+
+def _require_epub_source(case_id: str) -> None:
+    case = next(case for case in _manifest_cases() if case["id"] == case_id)
+    provenance = case["provenance"]
+    assert isinstance(provenance, dict)
+    source = (_MANIFEST.parent / str(provenance["source_path"])).resolve()
+    if not source.is_dir():
+        pytest.skip(f"local EPUB source tree is not materialized: {case_id}")
+
+
 def test_real_acceptance_corpus_is_complete_and_format_valid() -> None:
+    _require_case_sources()
     report = validate_corpus_manifest(_MANIFEST)
 
     assert report.valid, tuple(
@@ -33,6 +65,7 @@ def test_real_acceptance_corpus_is_complete_and_format_valid() -> None:
 
 
 def test_local_epub_preparation_is_byte_deterministic() -> None:
+    _require_epub_source("first-principles-zh-epub")
     output, first_digest = prepare_epub(_MANIFEST, "first-principles-zh-epub")
     first_bytes = output.read_bytes()
     output, second_digest = prepare_epub(_MANIFEST, "first-principles-zh-epub")
@@ -90,6 +123,10 @@ def test_manifest_missing_required_coverage_fails_early(tmp_path: Path) -> None:
 
 
 def test_native_pdf_cannot_be_relabelled_as_scanned(tmp_path: Path) -> None:
+    _require_case_sources(
+        "kag-knowledge-graph-tutorial-native-pdf",
+        "docling-graph-image-only-scanned-pdf",
+    )
     payload = json.loads(_MANIFEST.read_text(encoding="utf-8"))
     native_case = next(case for case in payload["cases"] if case["format"] == "native_pdf")
     scanned_case = next(case for case in payload["cases"] if case["format"] == "scanned_pdf")
