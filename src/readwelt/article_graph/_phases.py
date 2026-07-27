@@ -6,8 +6,11 @@ from collections import defaultdict
 from collections.abc import Mapping
 from typing import Any
 
+from readwelt.extraction import valid_relation_kind
+
 from ._audit import conflict, decision
 from ._normalization import merge_attributes, sorted_union
+from .confidence import confidence_lineage, decision_confidence
 from .digest import stable_identifier
 from .models import (
     ArticleEdge,
@@ -33,9 +36,35 @@ def reconcile_relations(
     decisions: list[MergeDecision] = []
     conflicts: list[ConflictRecord] = []
     for candidate in candidates:
+        if not valid_relation_kind(candidate["relation"]):
+            rejected = decision(
+                CanonicalizationPhase.RELATION_RECONCILIATION,
+                MergeOutcome.REJECT,
+                (candidate["candidate_id"],),
+                (),
+                ("unknown_unnamespaced_relation_kind",),
+                (*candidate["source_unit_ids"], *candidate["source_element_ids"]),
+                policy,
+                0.0,
+            )
+            decisions.append(rejected)
+            conflicts.append(
+                conflict(
+                    CanonicalizationPhase.RELATION_RECONCILIATION,
+                    rejected.candidate_ids,
+                    "relation is outside the closed taxonomy",
+                    rejected.evidence_refs,
+                    rejected,
+                )
+            )
+            continue
         source_id = candidate_to_node.get(candidate["source_candidate_id"])
         target_id = candidate_to_node.get(candidate["target_candidate_id"])
-        if source_id is not None and target_id is not None and candidate["source_unit_ids"]:
+        if (
+            source_id is not None
+            and target_id is not None
+            and (candidate["source_unit_ids"] or candidate["source_element_ids"])
+        ):
             valid_groups[(candidate["relation"], source_id, target_id)].append(candidate)
             continue
         invalid_reason = (
@@ -49,7 +78,7 @@ def reconcile_relations(
             (candidate["candidate_id"],),
             (),
             (invalid_reason,),
-            candidate["source_unit_ids"],
+            (*candidate["source_unit_ids"], *candidate["source_element_ids"]),
             policy,
             1.0,
         )
@@ -91,6 +120,7 @@ def _reconcile_group(
     edges: list[ArticleEdge] = []
     for partition in partitions:
         candidate_ids = tuple(item["candidate_id"] for item in partition)
+        score, method, sources = confidence_lineage(partition)
         edges.append(
             ArticleEdge(
                 edge_id=stable_identifier("canonical_edge", policy.policy_id, key, candidate_ids),
@@ -100,7 +130,10 @@ def _reconcile_group(
                 epistemic_status=EpistemicStatus.CANONICALIZED,
                 candidate_ids=candidate_ids,
                 source_unit_ids=sorted_union(item["source_unit_ids"] for item in partition),
-                confidence=min(item["confidence"] for item in partition),
+                source_element_ids=sorted_union(item["source_element_ids"] for item in partition),
+                confidence=score,
+                confidence_method=method,
+                confidence_sources=sources,
                 ambiguity=sorted_union(item["ambiguity"] for item in partition),
                 attributes=merge_attributes(partition),
             )
@@ -125,9 +158,9 @@ def _reconcile_group(
         tuple(item["candidate_id"] for item in group),
         tuple(edge.edge_id for edge in edges),
         reasons,
-        sorted_union(item["source_unit_ids"] for item in group),
+        sorted_union((*item["source_unit_ids"], *item["source_element_ids"]) for item in group),
         policy,
-        min(item["confidence"] for item in group),
+        decision_confidence(group),
     )
     group_conflict = (
         conflict(

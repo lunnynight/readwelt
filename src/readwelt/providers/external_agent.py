@@ -163,8 +163,7 @@ class ExternalAgentAdapter:
                 item
                 for item in artifacts
                 if isinstance(item, Mapping)
-                and item.get("artifact_type")
-                in {"reading_bundle", "reader_report_markdown"}
+                and item.get("artifact_type") in {"reading_bundle", "reader_report_markdown"}
             ]
             base.update({"action": "completed", "outputs": outputs})
             return base

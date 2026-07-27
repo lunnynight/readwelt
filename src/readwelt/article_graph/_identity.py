@@ -5,8 +5,11 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from readwelt.extraction import valid_candidate_kind
+
 from ._audit import conflict, decision
 from ._normalization import identity_key, merge_attributes, sorted_union
+from .confidence import confidence_lineage, decision_confidence
 from .digest import stable_identifier
 from .models import (
     ArticleNode,
@@ -79,6 +82,29 @@ def _ground_candidates(
     decisions: list[MergeDecision] = []
     conflicts: list[ConflictRecord] = []
     for candidate in candidates:
+        if not valid_candidate_kind(candidate["kind"]):
+            rejected = decision(
+                CanonicalizationPhase.IDENTITY_RESOLUTION,
+                MergeOutcome.REJECT,
+                (candidate["candidate_id"],),
+                (),
+                ("unknown_unnamespaced_candidate_kind",),
+                (*candidate["source_unit_ids"], *candidate["source_element_ids"]),
+                policy,
+                0.0,
+            )
+            decisions.append(rejected)
+            conflicts.append(
+                conflict(
+                    CanonicalizationPhase.IDENTITY_RESOLUTION,
+                    (candidate["candidate_id"],),
+                    "candidate kind is outside the closed taxonomy",
+                    rejected.evidence_refs,
+                    rejected,
+                )
+            )
+            continue
+        score, method, sources = confidence_lineage((candidate,))
         mentions.append(
             Mention(
                 mention_id=stable_identifier("mention", candidate["candidate_id"]),
@@ -88,12 +114,19 @@ def _ground_candidates(
                 text=candidate["text"],
                 epistemic_status=candidate["epistemic_status"],
                 source_unit_ids=candidate["source_unit_ids"],
-                confidence=candidate["confidence"],
+                source_element_ids=candidate["source_element_ids"],
+                confidence=score,
+                confidence_method=method,
+                confidence_sources=sources,
                 ambiguity=candidate["ambiguity"],
                 attributes=candidate["attributes"],
             )
         )
-        if candidate["kind"] not in policy.source_required_kinds or candidate["source_unit_ids"]:
+        if (
+            candidate["kind"] not in policy.source_required_kinds
+            or candidate["source_unit_ids"]
+            or candidate["source_element_ids"]
+        ):
             accepted.append(candidate)
             continue
         rejected = decision(
@@ -111,7 +144,7 @@ def _ground_candidates(
             conflict(
                 CanonicalizationPhase.IDENTITY_RESOLUTION,
                 (candidate["candidate_id"],),
-                "source-required candidate has no anchored text unit",
+                "source-required candidate has no known source unit or element",
                 (),
                 rejected,
             )
@@ -126,11 +159,14 @@ def _resolve_group(
     policy: CanonicalizationPolicy,
 ) -> tuple[list[ArticleNode], dict[str, str], MergeDecision, ConflictRecord | None]:
     ambiguous = any(item["ambiguity"] for item in group)
-    low_confidence = any(item["confidence"] < policy.merge_confidence_threshold for item in group)
-    common_source_units = set(group[0]["source_unit_ids"])
+    low_confidence = any(
+        item["confidence"] is None or item["confidence"] < policy.merge_confidence_threshold
+        for item in group
+    )
+    common_grounding = _grounding_keys(group[0])
     for item in group[1:]:
-        common_source_units.intersection_update(item["source_unit_ids"])
-    cross_unit_identity = len(group) > 1 and not common_source_units
+        common_grounding.intersection_update(_grounding_keys(item))
+    cross_unit_identity = len(group) > 1 and not common_grounding
     merge_group = (
         len(group) > 1 and not ambiguous and not low_confidence and not cross_unit_identity
     )
@@ -146,6 +182,10 @@ def _resolve_group(
             candidate_ids if not merge_group else "merged",
         )
         representative = partition[0]
+        score, method, sources = confidence_lineage(
+            partition,
+            {candidate_id: mentions[candidate_id].mention_id for candidate_id in candidate_ids},
+        )
         nodes.append(
             ArticleNode(
                 node_id=node_id,
@@ -156,7 +196,13 @@ def _resolve_group(
                     mentions[candidate_id].mention_id for candidate_id in candidate_ids
                 ),
                 source_unit_ids=sorted_union(item["source_unit_ids"] for item in partition),
+                source_element_ids=sorted_union(item["source_element_ids"] for item in partition),
                 attributes=merge_attributes(partition),
+                confidence=score,
+                confidence_method=method,
+                confidence_sources=sources,
+                ambiguity=sorted_union(item["ambiguity"] for item in partition),
+                candidate_ids=candidate_ids,
             )
         )
         candidate_to_node.update({candidate_id: node_id for candidate_id in candidate_ids})
@@ -164,7 +210,9 @@ def _resolve_group(
     outcome, reasons = _identity_outcome(
         group, merge_group, ambiguous, low_confidence, cross_unit_identity
     )
-    evidence = sorted_union(item["source_unit_ids"] for item in group)
+    evidence = sorted_union(
+        (*item["source_unit_ids"], *item["source_element_ids"]) for item in group
+    )
     merge_decision = decision(
         CanonicalizationPhase.IDENTITY_RESOLUTION,
         outcome,
@@ -173,7 +221,7 @@ def _resolve_group(
         reasons,
         evidence,
         policy,
-        min(item["confidence"] for item in group),
+        decision_confidence(group),
     )
     group_conflict = (
         conflict(
@@ -187,6 +235,13 @@ def _resolve_group(
         else None
     )
     return nodes, candidate_to_node, merge_decision, group_conflict
+
+
+def _grounding_keys(candidate: dict[str, Any]) -> set[tuple[str, str]]:
+    return {
+        *(("unit", item) for item in candidate["source_unit_ids"]),
+        *(("element", item) for item in candidate["source_element_ids"]),
+    }
 
 
 def _identity_outcome(

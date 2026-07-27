@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from readwelt.extraction import ARGUMENT_TAXONOMY_SCHEMA_VERSION
+
 from ._claims import assemble_claims
 from ._identity import resolve_identities
 from ._normalization import normalize_extraction, unique_candidates
@@ -135,6 +137,7 @@ class Canonicalizer:
         )
         graph_payload = {
             "schema_version": self.schema_version,
+            "taxonomy_schema_version": ARGUMENT_TAXONOMY_SCHEMA_VERSION,
             "snapshot_id": snapshot_id,
             "mentions": mentions,
             "nodes": nodes,
@@ -145,6 +148,7 @@ class Canonicalizer:
         }
         graph = ArticleGraph(
             schema_version=self.schema_version,
+            taxonomy_schema_version=ARGUMENT_TAXONOMY_SCHEMA_VERSION,
             snapshot_id=snapshot_id,
             mentions=mentions,
             nodes=nodes,

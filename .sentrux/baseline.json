@@ -1,0 +1,41 @@
+{
+  "engine": {
+    "id": "sentrux-native",
+    "version": "2.0.0"
+  },
+  "tool": "sentrux-lite",
+  "saved_at": "2026-07-27T11:58:20.5684068Z",
+  "path": "C:\\Users\\Administrator\\orca\\projects\\readwelt",
+  "quality_signal": 9206,
+  "coupling_score": 64.21,
+  "cycle_count": 0,
+  "god_file_count": 2,
+  "complex_fn_count": 0,
+  "cross_module_edges": 1419,
+  "total_import_edges": 1419,
+  "files": 221,
+  "functions": 1593,
+  "max_complexity": 19,
+  "legacyBaseline": {
+    "engine": "sentrux-lite",
+    "sha256": "aa795e28c31fd672c27fc2ebdb732618c2bbc7a398a2721287291672e7214031",
+    "artifact": "reports/sentrux/sentrux-lite-prechange-2026-07-27.json",
+    "purpose": "Preserve the authoritative pre-change comparison for the direct sentrux gate."
+  },
+  "metrics": {
+    "complex_fn_count": 0,
+    "coupling_score": 64.17,
+    "cross_module_edges": 1540,
+    "cycle_count": 0,
+    "files": 240,
+    "functions": 1725,
+    "god_file_count": 0,
+    "max_complexity": 22,
+    "quality_signal": 9416,
+    "total_import_edges": 1540
+  },
+  "savedAt": 1785163622,
+  "schema": "code-intel-sentrux-baseline.v2",
+  "scope": ".",
+  "sourceCommit": "9f4f4a07068eb1dfe86854712dfb44d899cbf534"
+}

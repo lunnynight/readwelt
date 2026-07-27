@@ -23,6 +23,7 @@ from .models import (
     SourceReference,
     stable_id,
 )
+from .taxonomy import ARGUMENT_TAXONOMY_SCHEMA_VERSION
 
 _TOKEN_PATTERN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 _SENTENCE_PATTERN = re.compile(r"\S(?:.*?)(?:[.!?。！？]+(?=\s|$)|$)", re.DOTALL)
@@ -64,6 +65,9 @@ class DeterministicLinguisticBackend:
             license_name="MIT",
             network_behavior=NetworkBehavior.NONE,
             deterministic=True,
+            taxonomy_schema_version=ARGUMENT_TAXONOMY_SCHEMA_VERSION,
+            emitted_candidate_kinds=("readwelt:sentence", "readwelt:token"),
+            emitted_relations=("readwelt:contains",),
         )
 
     def extract(self, inputs: tuple[ExtractionInput, ...]) -> GraphExtraction:
@@ -96,7 +100,7 @@ class DeterministicLinguisticBackend:
                 nodes.append(
                     CandidateNode(
                         candidate_id=sentence_id,
-                        kind="sentence",
+                        kind="readwelt:sentence",
                         label=None,
                         text=sentence_text,
                         grounding=sentence_grounding,
@@ -121,27 +125,23 @@ class DeterministicLinguisticBackend:
                     nodes.append(
                         CandidateNode(
                             candidate_id=token_id,
-                            kind="token",
+                            kind="readwelt:token",
                             label=token_text,
                             text=token_text,
                             grounding=_match_grounding(item, start, end, token_text),
                             confidence=ConfidenceAssessment(1.0, "deterministic_regex"),
-                            epistemic_status=(
-                                ExtractionEpistemicStatus.LINGUISTIC_INFERENCE
-                            ),
+                            epistemic_status=(ExtractionEpistemicStatus.LINGUISTIC_INFERENCE),
                         )
                     )
                     edges.append(
                         CandidateEdge(
                             candidate_id=stable_id("candidate-edge", sentence_id, token_id),
-                            relation="contains",
+                            relation="readwelt:contains",
                             source_candidate_id=sentence_id,
                             target_candidate_id=token_id,
                             grounding=unit_grounding,
                             confidence=ConfidenceAssessment(1.0, "deterministic_structure"),
-                            epistemic_status=(
-                                ExtractionEpistemicStatus.LINGUISTIC_INFERENCE
-                            ),
+                            epistemic_status=(ExtractionEpistemicStatus.LINGUISTIC_INFERENCE),
                         )
                     )
                     token_count += 1
@@ -182,6 +182,9 @@ class DeterministicSemanticExtractionBackend:
             license_name="MIT",
             network_behavior=NetworkBehavior.NONE,
             deterministic=True,
+            taxonomy_schema_version=ARGUMENT_TAXONOMY_SCHEMA_VERSION,
+            emitted_candidate_kinds=("claim",),
+            emitted_relations=(),
         )
 
     def extract(self, inputs: tuple[ExtractionInput, ...]) -> GraphExtraction:
@@ -265,9 +268,7 @@ def _outcomes(
             capability_covered: tuple[str, ...] = ()
         else:
             status = (
-                CapabilityStatus.COMPLETE
-                if counts.get(capability, 0)
-                else CapabilityStatus.EMPTY
+                CapabilityStatus.COMPLETE if counts.get(capability, 0) else CapabilityStatus.EMPTY
             )
             capability_covered = covered_ids
         outcomes.append(
@@ -309,7 +310,7 @@ def _artifact(
         *(f"{item.unit_id}:{item.text}" for item in inputs),
     )
     return GraphExtraction(
-        schema_version="graph-extraction.v1",
+        schema_version="graph-extraction.v3",
         extraction_id=extraction_id,
         document_id=document_id,
         snapshot_id=snapshot_id,

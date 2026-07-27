@@ -1,0 +1,36 @@
+{
+  "schema_version": "xberg-capability-probe-manifest.v1",
+  "cases": [
+    {
+      "label": "plain-text-probe",
+      "format": "txt",
+      "path": "../../tests/fixtures/xberg-probe.txt"
+    },
+    {
+      "label": "html-structure-probe",
+      "format": "html",
+      "path": "../../.research-inputs/xberg-structure-probe.html"
+    },
+    {
+      "label": "epub-first-principles",
+      "format": "epub",
+      "path": "../../.readwelt/corpora/raw/first-principles/epub",
+      "path_kind": "epub_directory"
+    },
+    {
+      "label": "native-pdf-aiwen",
+      "format": "native_pdf",
+      "path": "../../.research-checkouts/kag/tests/unit/builder/data/aiwen.pdf"
+    },
+    {
+      "label": "pdf-empty-extraction-control",
+      "format": "pdf_unknown_or_image_only",
+      "path": "../../.research-checkouts/docling-graph/tests/fixtures/sample_documents/sample.pdf"
+    },
+    {
+      "label": "scanned-pdf-required",
+      "format": "scanned_pdf",
+      "path": "../../.research-checkouts/docling-graph/tests/fixtures/sample_documents/sample.pdf"
+    }
+  ]
+}

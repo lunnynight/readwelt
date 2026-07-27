@@ -14,6 +14,7 @@ GENESIS_DIGEST = "sha256:" + ("0" * 64)
 
 
 class ProvenanceEventType(StrEnum):
+    ADOPTION = "adoption"
     UNITIZATION = "unitization"
     EXTRACTION = "extraction"
     GROUNDING = "grounding"

@@ -25,7 +25,8 @@ STAGE_POLICIES: Mapping[ReadingStage, Mapping[str, Any]] = {
             "reasoning chain, and source-underdetermined gaps"
         ),
         "constraints": (
-            "Every strong claim must cite anchor_ids; do not use biography, "
+            "Every strong claim must cite admitted source_citations or anchor_ids; "
+            "do not use biography, "
             "historical background, external research, or imported theory."
         ),
     },
@@ -96,6 +97,33 @@ RESPONSE_SCHEMA: Mapping[str, Any] = {
                     "claim_id": {"type": "string"},
                     "text": {"type": "string"},
                     "anchor_ids": {"type": "array", "items": {"type": "string"}},
+                    "graph_object_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "source_citations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["kind", "identity"],
+                            "properties": {
+                                "schema_version": {
+                                    "type": "string",
+                                    "enum": ["source-citation.v1"],
+                                },
+                                "kind": {
+                                    "enum": [
+                                        "anchor",
+                                        "unit",
+                                        "range",
+                                        "element",
+                                        "graph_object",
+                                    ]
+                                },
+                                "identity": {"type": "string"},
+                            },
+                        },
+                    },
                     "decision": {
                         "enum": [decision.value for decision in LedgerDecision],
                     },
@@ -105,7 +133,25 @@ RESPONSE_SCHEMA: Mapping[str, Any] = {
                 },
             },
         },
-        "gaps": {"type": "array"},
+        "gaps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["kind", "description"],
+                "properties": {
+                    "gap_id": {"type": "string"},
+                    "kind": {"type": "string"},
+                    "description": {"type": "string"},
+                    "affected_claim_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "critical": {"type": "boolean"},
+                    "repairable": {"type": "boolean"},
+                    "resolved": {"type": "boolean"},
+                },
+            },
+        },
         "warnings": {"type": "array", "items": {"type": "string"}},
     },
 }

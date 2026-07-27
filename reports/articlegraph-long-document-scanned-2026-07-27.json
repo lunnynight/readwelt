@@ -1,0 +1,122 @@
+{
+  "content_digest": "sha256:c27746a225d53cd653a2451236a5903a11342ca886d82a2fce30f09f7b1541fc",
+  "corpus_tags": [
+    "format:scanned_pdf",
+    "language:en",
+    "length:under_20k",
+    "missing_structure"
+  ],
+  "documents": [
+    {
+      "backend_configuration": "xberg==1.0.0rc38+semantic-backends-absent",
+      "backend_failures": [
+        "benchmark.semantic.unavailable:claim:failed",
+        "ingestion:xberg_structure_unsupported:not_exposed_for_document",
+        "ingestion:xberg_text_unsupported:empty_extraction"
+      ],
+      "case_id": "docling-graph-image-only-scanned-pdf",
+      "cursor_loop_detected": false,
+      "hard_budget_respected": true,
+      "language": "en",
+      "length_class": "under_20k",
+      "peak_memory_bytes": 75163,
+      "source_element_coverage": 1.0,
+      "source_format": "scanned_pdf",
+      "source_range_coverage": 1.0,
+      "strategies": [
+        {
+          "critical_anchor_miss_rate": 0.0,
+          "enabled": true,
+          "full_text_fallback_rate": 0.0,
+          "input_tokens": 0,
+          "latency_ms": 0.02729997504502535,
+          "must_hit_recall": 1.0,
+          "page_count": 1,
+          "peak_memory_bytes": 720,
+          "reason": null,
+          "selected_unit_ids": [
+            "text_unit_f2936898fc39cc8461f4fa9e"
+          ],
+          "strategy": "full_text"
+        },
+        {
+          "critical_anchor_miss_rate": 0.0,
+          "enabled": true,
+          "full_text_fallback_rate": 0.0,
+          "input_tokens": 0,
+          "latency_ms": 0.016999896615743637,
+          "must_hit_recall": 1.0,
+          "page_count": 1,
+          "peak_memory_bytes": 720,
+          "reason": null,
+          "selected_unit_ids": [],
+          "strategy": "lexical"
+        },
+        {
+          "critical_anchor_miss_rate": 1.0,
+          "enabled": false,
+          "full_text_fallback_rate": 0.0,
+          "input_tokens": 0,
+          "latency_ms": 0.005400041118264198,
+          "must_hit_recall": 0.0,
+          "page_count": 1,
+          "peak_memory_bytes": 472,
+          "reason": "dense_backend_not_enabled",
+          "selected_unit_ids": [],
+          "strategy": "dense"
+        },
+        {
+          "critical_anchor_miss_rate": 1.0,
+          "enabled": false,
+          "full_text_fallback_rate": 0.0,
+          "input_tokens": 0,
+          "latency_ms": 0.004599918611347675,
+          "must_hit_recall": 0.0,
+          "page_count": 1,
+          "peak_memory_bytes": 472,
+          "reason": "dense_backend_not_enabled_for_hybrid",
+          "selected_unit_ids": [],
+          "strategy": "hybrid"
+        },
+        {
+          "critical_anchor_miss_rate": 1.0,
+          "enabled": false,
+          "full_text_fallback_rate": 0.0,
+          "input_tokens": 0,
+          "latency_ms": 0.004400033503770828,
+          "must_hit_recall": 0.0,
+          "page_count": 1,
+          "peak_memory_bytes": 472,
+          "reason": "reranking_backend_not_enabled",
+          "selected_unit_ids": [],
+          "strategy": "reranking"
+        },
+        {
+          "critical_anchor_miss_rate": 0.0,
+          "enabled": true,
+          "full_text_fallback_rate": 0.0,
+          "input_tokens": 694,
+          "latency_ms": 0.004800036549568176,
+          "must_hit_recall": 1.0,
+          "page_count": 1,
+          "peak_memory_bytes": 720,
+          "reason": null,
+          "selected_unit_ids": [],
+          "strategy": "source_coverage_rescue"
+        }
+      ],
+      "structure_kind": "exposition",
+      "traversal_complete": false,
+      "traversal_input_tokens": 694,
+      "traversal_p50_latency_ms": 10.621799970977008,
+      "traversal_p95_latency_ms": 10.621799970977008,
+      "traversal_page_count": 1,
+      "traversal_presented_coverage": 0.0,
+      "traversal_visited_coverage": 0.0,
+      "unresolved_projections": 3
+    }
+  ],
+  "hard_serialized_token_budget": 16384,
+  "schema_version": "articlegraph-long-document-benchmark.v1",
+  "token_budget": 4096
+}

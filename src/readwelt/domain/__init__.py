@@ -1,10 +1,16 @@
 """Stable domain contracts exposed by Readwelt."""
 
 from readwelt.domain.artifacts import ArtifactRef, ArtifactStatus
-from readwelt.domain.documents import DocumentSection, SourceDocumentSnapshot
+from readwelt.domain.documents import (
+    DocumentSection,
+    SourceDocumentSnapshot,
+    SourceElement,
+    SourceElementProjectionStatus,
+)
 from readwelt.domain.ids import stable_id
 from readwelt.domain.reading import (
     EvidencePacket,
+    ExternalEvidence,
     LedgerDecision,
     LedgerLine,
     ReadingBundle,
@@ -13,7 +19,11 @@ from readwelt.domain.reading import (
     ReadingGap,
     ReadingStage,
     RetrievalHit,
+    SourceCitation,
+    SourceCitationKind,
     StageArtifact,
+    StageInputState,
+    StageInputStatus,
 )
 from readwelt.domain.run import ReadingRun
 from readwelt.domain.spans import SpanAnchor
@@ -29,6 +39,7 @@ __all__ = [
     "ArtifactStatus",
     "DocumentSection",
     "EvidencePacket",
+    "ExternalEvidence",
     "EpistemicStatus",
     "ExecutionStatus",
     "LedgerDecision",
@@ -42,8 +53,14 @@ __all__ = [
     "ReadingRun",
     "ReadingStage",
     "RetrievalHit",
+    "SourceCitation",
+    "SourceCitationKind",
     "SourceDocumentSnapshot",
+    "SourceElement",
+    "SourceElementProjectionStatus",
     "SpanAnchor",
     "StageArtifact",
+    "StageInputState",
+    "StageInputStatus",
     "stable_id",
 ]

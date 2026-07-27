@@ -1,27 +1,51 @@
 """Stage-specific ArticleGraph projections."""
 
 from .models import (
+    CoverageOmission,
+    ElementTraversalPosition,
     SelectionReason,
     StageContext,
     StageView,
+    StageViewBlockingRecord,
     StageViewCapabilityOutcome,
+    StageViewClaim,
+    StageViewConfidenceSource,
+    StageViewContinuationCursor,
+    StageViewCoverageManifest,
     StageViewEdge,
+    StageViewExternalEvidence,
+    StageViewExternalEvidenceOmission,
     StageViewNode,
+    StageViewSourceElement,
+    StageViewSourceRange,
     StageViewTextUnit,
     StageViewUpstreamClaim,
+    TraversalPosition,
 )
 from .projector import StageViewProjector
 from .validation import validate_stage_view
 
 __all__ = [
+    "CoverageOmission",
+    "ElementTraversalPosition",
     "SelectionReason",
     "StageContext",
     "StageView",
+    "StageViewBlockingRecord",
     "StageViewCapabilityOutcome",
+    "StageViewClaim",
+    "StageViewConfidenceSource",
+    "StageViewContinuationCursor",
+    "StageViewCoverageManifest",
     "StageViewEdge",
+    "StageViewExternalEvidence",
+    "StageViewExternalEvidenceOmission",
     "StageViewNode",
+    "StageViewSourceElement",
+    "StageViewSourceRange",
     "StageViewTextUnit",
     "StageViewUpstreamClaim",
+    "TraversalPosition",
     "StageViewProjector",
     "validate_stage_view",
 ]

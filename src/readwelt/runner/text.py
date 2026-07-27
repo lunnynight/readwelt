@@ -16,7 +16,8 @@ class PlainTextAdapter:
     async def ingest(self, source: Path) -> SourceDocumentSnapshot:
         if source.suffix.lower() != ".txt":
             raise ValueError("PlainTextAdapter accepts only .txt files")
-        raw = source.read_text(encoding="utf-8-sig")
+        raw_content = source.read_bytes()
+        raw = raw_content.decode("utf-8-sig")
         text = raw.replace("\r\n", "\n").replace("\r", "\n")
         return snapshot_from_text(
             source=source,
@@ -24,4 +25,5 @@ class PlainTextAdapter:
             source_kind="text/plain",
             artifacts=self._artifacts,
             adapter_finding="ingested_by_plain_text_fallback",
+            raw_source_content=raw_content,
         )

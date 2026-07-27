@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from statistics import fmean
 from typing import Any, cast
 
@@ -14,6 +15,7 @@ from readwelt.article_ir import (
 )
 from readwelt.domain.documents import SourceDocumentSnapshot
 from readwelt.extraction import (
+    ARGUMENT_TAXONOMY_SCHEMA_VERSION,
     BackendCapability,
     CapabilityOutcome,
     CapabilityStatus,
@@ -35,6 +37,7 @@ from readwelt.provenance import (
     ProvenanceLedger,
     ProvenanceLedgerArtifact,
     SourceIndex,
+    algorithm_lineage_for_build,
 )
 
 from .canonicalizer import Canonicalizer
@@ -49,7 +52,13 @@ from .models import (
     MergeReport,
 )
 
-ARTICLE_GRAPH_BUILD_SCHEMA_VERSION = "article-graph-build.v1"
+ARTICLE_GRAPH_BUILD_SCHEMA_VERSION = "article-graph-build.v2"
+
+
+class GroundingReferenceKind(StrEnum):
+    SOURCE_UNIT = "source_unit"
+    SOURCE_ELEMENT = "source_element"
+    GRAPH_ENDPOINT = "graph_endpoint"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,9 +102,11 @@ class GroundingFailure:
     extraction_id: str
     candidate_id: str
     candidate_kind: str
+    reference_kind: GroundingReferenceKind
     claimed_unit_ids: tuple[str, ...]
     reason: str
     content_digest: str
+    claimed_element_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.failure_id or not self.candidate_id or not self.reason:
@@ -192,6 +203,7 @@ class ArticleGraphBuilder:
         canonical_inputs, grounding_failures = _canonical_inputs(
             extractions,
             frozenset(unit.unit_id for unit in unitization.units),
+            frozenset(element.element_id for element in unitization.source_elements),
         )
         canonical = self._canonicalizer.canonicalize(
             cast(Any, canonical_inputs),
@@ -213,6 +225,7 @@ class ArticleGraphBuilder:
         )
         source_index = SourceIndex.rebuild(
             canonical.graph,
+            unitization,
             ledger,
             merge_report,
         )
@@ -259,6 +272,7 @@ def _extraction_inputs(unitization: UnitizationResult) -> tuple[ExtractionInput,
                 ExtractionSourceReference(
                     unit_id=unit.unit_id,
                     reference_id=reference.reference_id,
+                    element_id=reference.element_id,
                     start_offset=reference.start_offset,
                     end_offset=reference.end_offset,
                     exact_text=reference.exact_text,
@@ -294,7 +308,11 @@ def _extract_or_failure(
             uncovered_unit_ids=tuple(item.unit_id for item in inputs),
         )
         return GraphExtraction(
-            schema_version="graph-extraction.v1",
+            schema_version=(
+                "graph-extraction.v3"
+                if descriptor.taxonomy_schema_version == ARGUMENT_TAXONOMY_SCHEMA_VERSION
+                else "graph-extraction.v2"
+            ),
             extraction_id=stable_identifier(
                 "graph_extraction",
                 snapshot.snapshot_id,
@@ -319,6 +337,7 @@ def _extract_or_failure(
 def _canonical_inputs(
     extractions: Iterable[GraphExtraction],
     valid_unit_ids: frozenset[str],
+    valid_element_ids: frozenset[str],
 ) -> tuple[tuple[dict[str, object], ...], tuple[GroundingFailure, ...]]:
     views: list[dict[str, object]] = []
     failures: list[GroundingFailure] = []
@@ -327,14 +346,25 @@ def _canonical_inputs(
         admitted_node_ids: set[str] = set()
         for candidate in extraction.candidate_nodes:
             invalid = set(candidate.source_unit_ids) - valid_unit_ids
-            if invalid or not candidate.source_unit_ids:
+            claimed_elements = candidate.source_element_ids
+            invalid_elements = set(claimed_elements) - valid_element_ids
+            if invalid or invalid_elements or not (candidate.source_unit_ids or claimed_elements):
                 failures.append(
                     _grounding_failure(
                         extraction.extraction_id,
                         candidate.candidate_id,
                         candidate.kind,
                         candidate.source_unit_ids,
-                        "unknown_source_unit" if invalid else "missing_source_unit",
+                        (
+                            "unknown_source_unit"
+                            if invalid
+                            else (
+                                "unknown_source_element"
+                                if invalid_elements
+                                else "missing_source_grounding"
+                            )
+                        ),
+                        claimed_elements,
                     )
                 )
                 continue
@@ -343,22 +373,35 @@ def _canonical_inputs(
         admitted_edges = []
         for edge_candidate in extraction.candidate_edges:
             invalid = set(edge_candidate.source_unit_ids) - valid_unit_ids
+            claimed_elements = edge_candidate.source_element_ids
+            invalid_elements = set(claimed_elements) - valid_element_ids
             endpoints_valid = (
                 edge_candidate.source_candidate_id in admitted_node_ids
                 and edge_candidate.target_candidate_id in admitted_node_ids
             )
-            if invalid or not edge_candidate.source_unit_ids or not endpoints_valid:
+            if (
+                invalid
+                or invalid_elements
+                or not (edge_candidate.source_unit_ids or claimed_elements)
+                or not endpoints_valid
+            ):
+                reason = (
+                    "unknown_source_unit"
+                    if invalid
+                    else "unknown_source_element"
+                    if invalid_elements
+                    else "missing_source_grounding"
+                    if not (edge_candidate.source_unit_ids or claimed_elements)
+                    else "missing_or_rejected_endpoint"
+                )
                 failures.append(
                     _grounding_failure(
                         extraction.extraction_id,
                         edge_candidate.candidate_id,
                         f"relation:{edge_candidate.relation}",
                         edge_candidate.source_unit_ids,
-                        (
-                            "unknown_source_unit"
-                            if invalid
-                            else "missing_or_rejected_endpoint"
-                        ),
+                        reason,
+                        claimed_elements,
                     )
                 )
                 continue
@@ -381,17 +424,38 @@ def _grounding_failure(
     candidate_kind: str,
     claimed_unit_ids: Iterable[str],
     reason: str,
+    claimed_element_ids: Iterable[str] = (),
 ) -> GroundingFailure:
     claimed = tuple(sorted(set(claimed_unit_ids)))
-    payload = (extraction_id, candidate_id, candidate_kind, claimed, reason)
+    claimed_elements = tuple(sorted(set(claimed_element_ids)))
+    reference_kind = (
+        GroundingReferenceKind.SOURCE_ELEMENT
+        if reason == "unknown_source_element"
+        else (
+            GroundingReferenceKind.GRAPH_ENDPOINT
+            if reason == "missing_or_rejected_endpoint"
+            else GroundingReferenceKind.SOURCE_UNIT
+        )
+    )
+    payload = (
+        extraction_id,
+        candidate_id,
+        candidate_kind,
+        reference_kind,
+        claimed,
+        claimed_elements,
+        reason,
+    )
     return GroundingFailure(
         failure_id=stable_identifier("grounding_failure", *payload),
         extraction_id=extraction_id,
         candidate_id=candidate_id,
         candidate_kind=candidate_kind,
+        reference_kind=reference_kind,
         claimed_unit_ids=claimed,
         reason=reason,
         content_digest=content_digest(payload),
+        claimed_element_ids=claimed_elements,
     )
 
 
@@ -412,7 +476,10 @@ def _record_grounding_failures(
             "outcome": MergeOutcome.REJECT,
             "candidate_ids": (failure.candidate_id,),
             "reasons": (f"grounding:{failure.reason}",),
-            "evidence_refs": failure.claimed_unit_ids,
+            "evidence_refs": (
+                *failure.claimed_unit_ids,
+                *failure.claimed_element_ids,
+            ),
             "policy_id": policy.policy_id,
             "confidence": 0.0,
         }
@@ -428,7 +495,10 @@ def _record_grounding_failures(
                 candidate_ids=(failure.candidate_id,),
                 canonical_object_ids=(),
                 reasons=(f"grounding:{failure.reason}",),
-                evidence_refs=failure.claimed_unit_ids,
+                evidence_refs=(
+                    *failure.claimed_unit_ids,
+                    *failure.claimed_element_ids,
+                ),
                 policy_id=policy.policy_id,
                 confidence=0.0,
                 content_digest=content_digest(payload),
@@ -523,6 +593,20 @@ def _build_ledger(
 ) -> ProvenanceLedger:
     ledger = ProvenanceLedger()
     timestamp = snapshot.captured_at.isoformat()
+    adoption_producer = ProducerIdentity(
+        producer_id="readwelt.open-source-adoption",
+        producer_version="1",
+        schema_version="algorithm-lineage.v1",
+    )
+    for lineage in algorithm_lineage_for_build(snapshot.parse_findings):
+        ledger.append(
+            ProvenanceEventType.ADOPTION,
+            producer=adoption_producer,
+            epistemic_status=EpistemicStatus.INTERNAL_DERIVED,
+            outputs=(lineage.content_digest,),
+            payload=lineage.to_payload(),
+            timestamp=timestamp,
+        )
     unitizer_producer = ProducerIdentity(
         producer_id="readwelt.article-ir.unitizer",
         producer_version="1",
@@ -533,7 +617,11 @@ def _build_ledger(
         producer=unitizer_producer,
         epistemic_status=EpistemicStatus.EXPLICIT,
         inputs=(snapshot.content_digest,),
-        outputs=(unitization.content_digest, *(unit.unit_id for unit in unitization.units)),
+        outputs=(
+            unitization.content_digest,
+            *(unit.unit_id for unit in unitization.units),
+            *(element.element_id for element in unitization.source_elements),
+        ),
         source_refs=(
             reference.reference_id
             for unit in unitization.units
@@ -582,7 +670,14 @@ def _build_ledger(
             inputs=(unitization.content_digest, *extraction.input_unit_ids),
             outputs=(extraction.content_digest, *candidate_ids),
             source_refs=tuple(
-                dict.fromkeys(unit_id for item in candidates for unit_id in item.source_unit_ids)
+                dict.fromkeys(
+                    source_id
+                    for item in candidates
+                    for source_id in (
+                        *item.source_unit_ids,
+                        *item.source_element_ids,
+                    )
+                )
             ),
             confidence=fmean(confidence_values) if confidence_values else 1.0,
             ambiguity=tuple(
@@ -612,7 +707,9 @@ def _build_ledger(
             ambiguity=(failure.reason,),
             payload={
                 "candidate_kind": failure.candidate_kind,
+                "reference_kind": failure.reference_kind,
                 "claimed_unit_ids": failure.claimed_unit_ids,
+                "claimed_element_ids": failure.claimed_element_ids,
                 "result": "rejected",
             },
             timestamp=timestamp,
@@ -637,15 +734,31 @@ def _build_ledger(
         ),
         source_refs=tuple(
             dict.fromkeys(
-                unit_id
-                for collection in (graph.nodes, graph.edges)
-                for item in collection
-                for unit_id in item.source_unit_ids
+                (
+                    *(
+                        source_id
+                        for collection in (graph.nodes, graph.edges)
+                        for item in collection
+                        for source_id in (
+                            *item.source_unit_ids,
+                            *item.source_element_ids,
+                        )
+                    ),
+                    *(
+                        source_id
+                        for claim in graph.claims
+                        for source_id in (
+                            *claim.evidence_unit_ids,
+                            *claim.evidence_element_ids,
+                        )
+                    ),
+                )
             )
         ),
         payload={
             "merge_report_digest": merge_report.content_digest,
             "policy_id": merge_report.policy_id,
+            "taxonomy_schema_version": graph.taxonomy_schema_version,
         },
         timestamp=timestamp,
     )
@@ -666,8 +779,8 @@ def _build_ledger(
         ProvenanceEventType.PROJECTION,
         producer=ProducerIdentity(
             producer_id="readwelt.provenance.source-index",
-            producer_version="1",
-            schema_version="source-index.v1",
+            producer_version="3",
+            schema_version="source-index.v3",
         ),
         epistemic_status=EpistemicStatus.CANONICALIZED,
         inputs=(graph.content_digest, ledger.head_digest),

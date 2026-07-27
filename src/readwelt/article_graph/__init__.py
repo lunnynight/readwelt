@@ -1,5 +1,11 @@
 """Canonical ArticleGraph trust-plane projection."""
 
+from .artifacts import (
+    ARTICLE_GRAPH_BUILD_ARTIFACT_SCHEMA_VERSION,
+    ArticleGraphArtifactReference,
+    ArticleGraphBuildArtifact,
+    ArticleGraphCapabilitySummary,
+)
 from .builder import (
     ARTICLE_GRAPH_BUILD_SCHEMA_VERSION,
     ArticleGraphBuilder,
@@ -7,6 +13,7 @@ from .builder import (
     ArticleGraphBuildResult,
     ArticleGraphCapabilityReport,
     GroundingFailure,
+    GroundingReferenceKind,
 )
 from .canonicalizer import Canonicalizer
 from .models import (
@@ -18,6 +25,7 @@ from .models import (
     CanonicalizationPolicy,
     CanonicalizationResult,
     Claim,
+    ConfidenceSource,
     ConflictRecord,
     EpistemicStatus,
     Mention,
@@ -34,14 +42,19 @@ from .protocols import (
 
 __all__ = [
     "ARTICLE_GRAPH_SCHEMA_VERSION",
+    "ARTICLE_GRAPH_BUILD_ARTIFACT_SCHEMA_VERSION",
     "ARTICLE_GRAPH_BUILD_SCHEMA_VERSION",
     "ArticleEdge",
     "ArticleGraph",
+    "ArticleGraphArtifactReference",
+    "ArticleGraphBuildArtifact",
     "ArticleGraphBuilder",
     "ArticleGraphBuildPolicy",
     "ArticleGraphBuildResult",
+    "ArticleGraphCapabilitySummary",
     "ArticleGraphCapabilityReport",
     "GroundingFailure",
+    "GroundingReferenceKind",
     "ArticleNode",
     "CandidateEdgeLike",
     "CandidateNodeLike",
@@ -50,6 +63,7 @@ __all__ = [
     "CanonicalizationResult",
     "Canonicalizer",
     "Claim",
+    "ConfidenceSource",
     "ConflictRecord",
     "EpistemicStatus",
     "ExtractionInput",

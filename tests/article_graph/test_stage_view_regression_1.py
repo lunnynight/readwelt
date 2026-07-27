@@ -81,13 +81,13 @@ def test_provider_stage_view_excludes_linguistic_scaffolding_and_counts_bytes() 
         separators=(",", ":"),
         sort_keys=True,
     ).encode()
-    measured_tokens = (len(encoded) + 3) // 4
+    measured_tokens = len(encoded)
 
-    assert {node["kind"] for node in mapping["nodes"]}.isdisjoint(
-        {"token", "sentence"}
-    )
+    assert {node["kind"] for node in mapping["nodes"]}.isdisjoint({"token", "sentence"})
     assert "capability_outcomes" not in mapping
     assert "selection_reasons" not in mapping
     assert all("text" not in unit for unit in mapping["text_units"])
     assert abs(mapping["estimated_serialized_tokens"] - measured_tokens) <= 10
-    assert len(encoded) < 10_000
+    assert mapping["claim_candidates"]
+    assert all(item["confidence_lineage"] for item in mapping["claim_candidates"])
+    assert len(encoded) < 12_000

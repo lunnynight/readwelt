@@ -17,6 +17,7 @@ from readwelt.providers import (
     StageRequest,
 )
 from readwelt.providers.model_protocol import JsonSchema
+from readwelt.token_budget import DEFAULT_TOKEN_COUNTER, InputTokenCounter
 
 from .run_store import ApplicationRunStore
 
@@ -43,6 +44,14 @@ class AuditedCandidateProvider:
     @property
     def model(self) -> str:
         return self._provider.model
+
+    @property
+    def input_token_counter(self) -> InputTokenCounter:
+        return getattr(
+            self._provider,
+            "input_token_counter",
+            DEFAULT_TOKEN_COUNTER,
+        )
 
     async def generate(
         self,
@@ -105,6 +114,10 @@ class ResolvingCandidateProvider:
     @property
     def model(self) -> str:
         return "provider-resolver"
+
+    @property
+    def input_token_counter(self) -> InputTokenCounter:
+        return self._resolver.planning_token_counter(self._selection)
 
     async def generate(
         self,

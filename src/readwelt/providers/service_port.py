@@ -39,7 +39,11 @@ class ApplicationServiceUnavailable(RuntimeError):
     """The core application service cannot be loaded."""
 
 
-def load_application_service(project_root: Path) -> ReadweltApplicationServicePort:
+def load_application_service(
+    project_root: Path,
+    *,
+    requested_provider: str | None = None,
+) -> ReadweltApplicationServicePort:
     """Load the application service lazily so adapter imports stay lightweight."""
 
     try:
@@ -52,10 +56,22 @@ def load_application_service(project_root: Path) -> ReadweltApplicationServicePo
         ) from exc
 
     open_method = getattr(service_class, "open", None)
-    if callable(open_method):
+    if callable(open_method) and requested_provider is None:
         return cast(ReadweltApplicationServicePort, open_method(project_root))
     try:
-        return cast(ReadweltApplicationServicePort, service_class(project_root))
+        if requested_provider is None:
+            return cast(ReadweltApplicationServicePort, service_class(project_root))
+        from .config import configured_model_providers
+
+        return cast(
+            ReadweltApplicationServicePort,
+            service_class(
+                project_root,
+                candidate_providers=configured_model_providers(
+                    requested=requested_provider,
+                ),
+            ),
+        )
     except TypeError as exc:
         raise ApplicationServiceUnavailable(
             "ReadweltApplicationService has no supported project-root constructor"
@@ -100,8 +116,7 @@ async def invoke_read(
     kwargs = {"provider_selection": selection.to_dict()} if accepts_selection else {}
     if options:
         accepts_kwargs = any(
-            item.kind is inspect.Parameter.VAR_KEYWORD
-            for item in signature.parameters.values()
+            item.kind is inspect.Parameter.VAR_KEYWORD for item in signature.parameters.values()
         )
         unsupported = [
             key for key in options if key not in signature.parameters and not accepts_kwargs

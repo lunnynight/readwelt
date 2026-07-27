@@ -5,209 +5,26 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
-from types import MappingProxyType
 from typing import Any
 
+from . import contracts as _contracts
+from .taxonomy import ARGUMENT_TAXONOMY_SCHEMA_VERSION
 
-class BackendCapability(StrEnum):
-    SENTENCE = "sentence"
-    TOKEN = "token"
-    POS = "pos"
-    NER = "ner"
-    DEPENDENCY = "dependency"
-    SRL = "srl"
-    COREFERENCE = "coreference"
-    ENTITY = "entity"
-    RELATION = "relation"
-    EVENT = "event"
-    CONCEPT = "concept"
-    CLAIM = "claim"
-    EVIDENCE = "evidence"
-    EXAMPLE = "example"
-    OBJECTION = "objection"
-    QUALIFICATION = "qualification"
-
-
-class CapabilityStatus(StrEnum):
-    UNSUPPORTED = "unsupported"
-    NOT_RUN = "not_run"
-    EMPTY = "empty"
-    FAILED = "failed"
-    PARTIAL = "partial"
-    COMPLETE = "complete"
-
-
-class NetworkBehavior(StrEnum):
-    NONE = "none"
-    OPTIONAL = "optional"
-    REQUIRED = "required"
-
-
-class ExtractionEpistemicStatus(StrEnum):
-    EXPLICIT = "explicit"
-    LINGUISTIC_INFERENCE = "linguistic_inference"
-    SEMANTIC_INFERENCE = "semantic_inference"
-
-
-@dataclass(frozen=True, slots=True)
-class BackendDescriptor:
-    backend_id: str
-    name: str
-    version: str
-    model_revision: str | None
-    supported_capabilities: tuple[BackendCapability, ...]
-    required_resources: tuple[str, ...] = ()
-    license_name: str | None = None
-    license_url: str | None = None
-    network_behavior: NetworkBehavior = NetworkBehavior.NONE
-    deterministic: bool = False
-    metadata: Mapping[str, str] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if not self.backend_id.strip() or not self.name.strip() or not self.version.strip():
-            raise ValueError("backend id, name, and version are required")
-        if len(set(self.supported_capabilities)) != len(self.supported_capabilities):
-            raise ValueError("supported capabilities must be unique")
-        object.__setattr__(self, "metadata", MappingProxyType(dict(sorted(self.metadata.items()))))
-
-
-@dataclass(frozen=True, slots=True)
-class SourceReference:
-    """Stable extraction-side reference to an anchored source unit or sub-range."""
-
-    unit_id: str
-    reference_id: str | None = None
-    start_offset: int | None = None
-    end_offset: int | None = None
-    exact_text: str | None = None
-
-    def __post_init__(self) -> None:
-        if not self.unit_id.strip():
-            raise ValueError("source reference unit_id is required")
-        if (self.start_offset is None) != (self.end_offset is None):
-            raise ValueError("source reference offsets must be supplied together")
-        if self.start_offset is not None and (
-            self.start_offset < 0 or self.end_offset is None or self.end_offset < self.start_offset
-        ):
-            raise ValueError("source reference offsets are invalid")
-
-
-@dataclass(frozen=True, slots=True)
-class ExtractionInput:
-    """Small adapter DTO; callers need not expose their article-IR implementation."""
-
-    document_id: str
-    snapshot_id: str
-    unit_id: str
-    text: str
-    source_references: tuple[SourceReference, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not self.document_id.strip() or not self.snapshot_id.strip() or not self.unit_id.strip():
-            raise ValueError("extraction input document_id, snapshot_id, and unit_id are required")
-
-
-@dataclass(frozen=True, slots=True)
-class SourceGrounding:
-    source_references: tuple[SourceReference, ...]
-    exact: bool = True
-
-    @property
-    def grounded(self) -> bool:
-        return bool(self.source_references)
-
-    @property
-    def source_unit_ids(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(item.unit_id for item in self.source_references))
-
-
-@dataclass(frozen=True, slots=True)
-class ConfidenceAssessment:
-    score: float
-    method: str
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.score <= 1.0:
-            raise ValueError("confidence score must be between zero and one")
-        if not self.method.strip():
-            raise ValueError("confidence method is required")
-
-
-@dataclass(frozen=True, slots=True)
-class Ambiguity:
-    code: str
-    message: str
-    alternatives: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not self.code.strip() or not self.message.strip():
-            raise ValueError("ambiguity code and message are required")
-
-
-@dataclass(frozen=True, slots=True)
-class UnresolvedReference:
-    reference: str
-    reason: str
-    candidate_ids: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not self.reference.strip() or not self.reason.strip():
-            raise ValueError("unresolved reference and reason are required")
-
-
-@dataclass(frozen=True, slots=True)
-class CandidateNode:
-    candidate_id: str
-    kind: str
-    label: str | None
-    text: str | None
-    grounding: SourceGrounding
-    confidence: ConfidenceAssessment
-    epistemic_status: ExtractionEpistemicStatus
-    attributes: tuple[tuple[str, str], ...] = ()
-    ambiguity: tuple[Ambiguity, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not self.candidate_id.strip() or not self.kind.strip():
-            raise ValueError("candidate node id and kind are required")
-        if not self.grounding.grounded:
-            raise ValueError("candidate nodes must fail empty when source grounding is absent")
-
-    @property
-    def source_unit_ids(self) -> tuple[str, ...]:
-        return self.grounding.source_unit_ids
-
-
-@dataclass(frozen=True, slots=True)
-class CandidateEdge:
-    candidate_id: str
-    relation: str
-    source_candidate_id: str
-    target_candidate_id: str
-    grounding: SourceGrounding
-    confidence: ConfidenceAssessment
-    epistemic_status: ExtractionEpistemicStatus
-    attributes: tuple[tuple[str, str], ...] = ()
-    ambiguity: tuple[Ambiguity, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not all(
-            (
-                self.candidate_id.strip(),
-                self.relation.strip(),
-                self.source_candidate_id.strip(),
-                self.target_candidate_id.strip(),
-            )
-        ):
-            raise ValueError("candidate edge identity, relation, and endpoints are required")
-        if not self.grounding.grounded:
-            raise ValueError("candidate edges must fail empty when source grounding is absent")
-
-    @property
-    def source_unit_ids(self) -> tuple[str, ...]:
-        return self.grounding.source_unit_ids
+Ambiguity = _contracts.Ambiguity
+BackendCapability = _contracts.BackendCapability
+BackendDescriptor = _contracts.BackendDescriptor
+CandidateEdge = _contracts.CandidateEdge
+CandidateNode = _contracts.CandidateNode
+CapabilityStatus = _contracts.CapabilityStatus
+ConfidenceAssessment = _contracts.ConfidenceAssessment
+ExtractionEpistemicStatus = _contracts.ExtractionEpistemicStatus
+ExtractionInput = _contracts.ExtractionInput
+NetworkBehavior = _contracts.NetworkBehavior
+SourceGrounding = _contracts.SourceGrounding
+SourceReference = _contracts.SourceReference
+UnresolvedReference = _contracts.UnresolvedReference
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,8 +120,34 @@ class GraphExtraction:
     content_digest: str = ""
 
     def __post_init__(self) -> None:
-        if self.schema_version != "graph-extraction.v1":
+        if self.schema_version not in {
+            "graph-extraction.v1",
+            "graph-extraction.v2",
+            "graph-extraction.v3",
+        }:
             raise ValueError(f"unsupported graph extraction schema: {self.schema_version}")
+        v1_has_element_only_reference = any(
+            reference.unit_id is None
+            for candidate in self.candidate_nodes
+            for reference in candidate.grounding.source_references
+        ) or any(
+            reference.unit_id is None
+            for candidate in self.candidate_edges
+            for reference in candidate.grounding.source_references
+        )
+        if self.schema_version == "graph-extraction.v1" and v1_has_element_only_reference:
+            raise ValueError("graph-extraction.v1 references require source unit ids")
+        if self.schema_version == "graph-extraction.v3":
+            if self.backend.taxonomy_schema_version != ARGUMENT_TAXONOMY_SCHEMA_VERSION:
+                raise ValueError("graph-extraction.v3 requires the argument taxonomy")
+            undeclared_kinds = {item.kind for item in self.candidate_nodes} - set(
+                self.backend.emitted_candidate_kinds
+            )
+            undeclared_relations = {item.relation for item in self.candidate_edges} - set(
+                self.backend.emitted_relations
+            )
+            if undeclared_kinds or undeclared_relations:
+                raise ValueError("graph extraction emitted undeclared taxonomy identities")
         if not self.extraction_id.strip():
             raise ValueError("extraction id is required")
         if not self.document_id.strip() or not self.snapshot_id.strip():
@@ -329,9 +172,7 @@ class GraphExtraction:
             CapabilityStatus.PARTIAL,
             CapabilityStatus.COMPLETE,
         }
-        return tuple(
-            item.capability for item in self.outcomes if item.status in available_statuses
-        )
+        return tuple(item.capability for item in self.outcomes if item.status in available_statuses)
 
     @property
     def missing_capabilities(self) -> tuple[BackendCapability, ...]:
@@ -348,13 +189,18 @@ class GraphExtraction:
 
 
 def graph_extraction_digest(extraction: GraphExtraction) -> str:
-    value = {
-        item.name: getattr(extraction, item.name)
-        for item in fields(extraction)
-    }
+    value = {item.name: getattr(extraction, item.name) for item in fields(extraction)}
     value["content_digest"] = ""
     payload = json.dumps(
-        _json_value(value), ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        _json_value(
+            value,
+            omit_absent_element_id=extraction.schema_version == "graph-extraction.v1",
+            omit_taxonomy_descriptor=extraction.schema_version
+            in {"graph-extraction.v1", "graph-extraction.v2"},
+        ),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
     ).encode()
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
@@ -364,16 +210,53 @@ def stable_id(namespace: str, *values: str) -> str:
     return f"{namespace}:{hashlib.sha256(payload).hexdigest()[:24]}"
 
 
-def _json_value(value: Any) -> Any:
+def _json_value(
+    value: Any,
+    *,
+    omit_absent_element_id: bool = True,
+    omit_taxonomy_descriptor: bool = True,
+) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
-        return {
-            item.name: _json_value(getattr(value, item.name))
+        result = {
+            item.name: _json_value(
+                getattr(value, item.name),
+                omit_absent_element_id=omit_absent_element_id,
+                omit_taxonomy_descriptor=omit_taxonomy_descriptor,
+            )
             for item in fields(value)
         }
+        # ``element_id`` is an additive graph-extraction.v1 field. Omitting its
+        # absent value preserves the digest of historical v1 artifacts while a
+        # claimed native element still participates in the digest.
+        if (
+            omit_absent_element_id
+            and isinstance(value, SourceReference)
+            and value.element_id is None
+        ):
+            result.pop("element_id")
+        if omit_taxonomy_descriptor and isinstance(value, BackendDescriptor):
+            result.pop("taxonomy_schema_version")
+            result.pop("emitted_candidate_kinds")
+            result.pop("emitted_relations")
+        return result
     if isinstance(value, Mapping):
-        return {str(key): _json_value(item) for key, item in value.items()}
+        return {
+            str(key): _json_value(
+                item,
+                omit_absent_element_id=omit_absent_element_id,
+                omit_taxonomy_descriptor=omit_taxonomy_descriptor,
+            )
+            for key, item in value.items()
+        }
     if isinstance(value, (tuple, list)):
-        return [_json_value(item) for item in value]
+        return [
+            _json_value(
+                item,
+                omit_absent_element_id=omit_absent_element_id,
+                omit_taxonomy_descriptor=omit_taxonomy_descriptor,
+            )
+            for item in value
+        ]
     if isinstance(value, StrEnum):
         return value.value
     return value

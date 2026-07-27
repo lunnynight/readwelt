@@ -136,7 +136,7 @@ class DocumentRunner:
 
     @staticmethod
     def _decode_snapshot(value: dict[str, Any]) -> SourceDocumentSnapshot:
-        from readwelt.domain import DocumentSection, SpanAnchor
+        from readwelt.domain import DocumentSection, SourceElement, SpanAnchor
 
         sections = []
         for section_value in value["sections"]:
@@ -163,8 +163,99 @@ class DocumentRunner:
                     start_offset=int(section_value["start_offset"]),
                     end_offset=int(section_value["end_offset"]),
                     anchor=anchor,
+                    kind=(
+                        str(section_value["kind"])
+                        if section_value.get("kind") is not None
+                        else None
+                    ),
+                    parent_element_id=(
+                        str(section_value["parent_element_id"])
+                        if section_value.get("parent_element_id") is not None
+                        else None
+                    ),
+                    heading_trail=tuple(
+                        str(item) for item in section_value.get("heading_trail", ())
+                    ),
+                    element_id=(
+                        str(section_value["element_id"])
+                        if section_value.get("element_id") is not None
+                        else None
+                    ),
+                    page=(
+                        int(section_value["page"])
+                        if section_value.get("page") is not None
+                        else None
+                    ),
+                    bounding_box=(
+                        _decode_bbox(section_value["bounding_box"])
+                        if section_value.get("bounding_box") is not None
+                        else None
+                    ),
                 )
             )
+        source_elements = tuple(
+            SourceElement(
+                element_id=str(item["element_id"]),
+                snapshot_id=str(item["snapshot_id"]),
+                schema_version=str(item.get("schema_version", "source-element.v1")),
+                ordinal=int(item["ordinal"]),
+                reading_order=int(item.get("reading_order", item["ordinal"])),
+                projection_status=str(item["projection_status"]),  # type: ignore[arg-type]
+                kind=str(item["kind"]) if item.get("kind") is not None else None,
+                content_layer=(
+                    str(item["content_layer"]) if item.get("content_layer") is not None else None
+                ),
+                exact_text=(
+                    str(item["exact_text"]) if item.get("exact_text") is not None else None
+                ),
+                start_offset=(
+                    int(item["start_offset"]) if item.get("start_offset") is not None else None
+                ),
+                end_offset=(
+                    int(item["end_offset"]) if item.get("end_offset") is not None else None
+                ),
+                parent_element_id=(
+                    str(item["parent_element_id"])
+                    if item.get("parent_element_id") is not None
+                    else None
+                ),
+                child_element_ids=tuple(
+                    str(child_id) for child_id in item.get("child_element_ids", ())
+                ),
+                previous_element_id=(
+                    str(item["previous_element_id"])
+                    if item.get("previous_element_id") is not None
+                    else None
+                ),
+                next_element_id=(
+                    str(item["next_element_id"])
+                    if item.get("next_element_id") is not None
+                    else None
+                ),
+                structural_relations=tuple(
+                    (str(relation), str(target_id))
+                    for relation, target_id in item.get("structural_relations", ())
+                ),
+                heading_trail=tuple(str(heading) for heading in item.get("heading_trail", ())),
+                page=int(item["page"]) if item.get("page") is not None else None,
+                bounding_box=(
+                    _decode_bbox(item["bounding_box"])
+                    if item.get("bounding_box") is not None
+                    else None
+                ),
+                native_reference=(
+                    str(item["native_reference"])
+                    if item.get("native_reference") is not None
+                    else None
+                ),
+                raw_payload_ref=(
+                    str(item["raw_payload_ref"])
+                    if item.get("raw_payload_ref") is not None
+                    else None
+                ),
+            )
+            for item in value.get("source_elements", ())
+        )
         published_at = value.get("published_at")
         return SourceDocumentSnapshot(
             snapshot_id=str(value["snapshot_id"]),
@@ -177,6 +268,7 @@ class DocumentRunner:
             language=str(value["language"]),
             normalized_text_ref=str(value["normalized_text_ref"]),
             sections=tuple(sections),
+            source_elements=source_elements,
             attachments=tuple(str(item) for item in value["attachments"]),
             parse_findings=tuple(str(item) for item in value["parse_findings"]),
             published_at=(
@@ -190,3 +282,10 @@ class DocumentRunner:
                 else None
             ),
         )
+
+
+def _decode_bbox(value: object) -> tuple[float, float, float, float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        raise ValueError("bounding_box must contain four coordinates")
+    first, second, third, fourth = value
+    return float(first), float(second), float(third), float(fourth)

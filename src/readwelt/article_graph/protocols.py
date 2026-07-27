@@ -18,6 +18,7 @@ class CandidateNodeLike(Protocol):
     text: str | None
     confidence: float
     source_unit_ids: Sequence[str]
+    source_element_ids: Sequence[str]
 
 
 @runtime_checkable
@@ -28,6 +29,7 @@ class CandidateEdgeLike(Protocol):
     target_candidate_id: str
     confidence: float
     source_unit_ids: Sequence[str]
+    source_element_ids: Sequence[str]
 
 
 @runtime_checkable

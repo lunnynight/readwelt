@@ -5,121 +5,46 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
 
 from .contracts import (
+    DEFAULT_TOKEN_COUNTER,
+    InputTokenCounter,
     ProviderContractError,
+    ProviderEnvelopeProfile,
+    ProviderInputBudgetReceipt,
     ProviderKind,
     ProviderUnavailableError,
     StageCandidate,
     StageRequest,
+    openai_chat_payload,
+    validate_json_schema,
+    validate_provider_input,
 )
 from .model_protocol import JsonSchema
 
 
-def validate_json_schema(value: Any, schema: JsonSchema, path: str = "$") -> None:
-    """Validate the useful, deterministic subset of JSON Schema used by stages."""
-    if "const" in schema and value != schema["const"]:
-        raise ProviderContractError(f"{path} must equal the schema const")
-    if "enum" in schema and value not in schema["enum"]:
-        raise ProviderContractError(f"{path} is not one of the allowed values")
-    _validate_combinators(value, schema, path)
-    _validate_type(value, schema, path)
-    if isinstance(value, Mapping):
-        _validate_object(value, schema, path)
-    if isinstance(value, list):
-        _validate_array(value, schema, path)
+def parse_openai_structured_response(
+    response: httpx.Response,
+    response_schema: JsonSchema,
+    *,
+    provider_name: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Parse and validate the shared OpenAI-compatible structured response."""
 
-
-def _validate_combinators(value: Any, schema: JsonSchema, path: str) -> None:
-    if "allOf" in schema:
-        for child in _schema_sequence(schema["allOf"], f"{path}.allOf"):
-            validate_json_schema(value, child, path)
-    if "anyOf" in schema:
-        choices = _schema_sequence(schema["anyOf"], f"{path}.anyOf")
-        if not any(_is_valid(value, child) for child in choices):
-            raise ProviderContractError(f"{path} does not match any allowed schema")
-    if "oneOf" in schema:
-        choices = _schema_sequence(schema["oneOf"], f"{path}.oneOf")
-        if sum(_is_valid(value, child) for child in choices) != 1:
-            raise ProviderContractError(f"{path} must match exactly one allowed schema")
-
-
-def _validate_type(value: Any, schema: JsonSchema, path: str) -> None:
-    expected = schema.get("type")
-    if isinstance(expected, list):
-        if not any(_matches_type(value, item) for item in expected):
-            raise ProviderContractError(f"{path} has an invalid JSON type")
-    elif isinstance(expected, str) and not _matches_type(value, expected):
-        raise ProviderContractError(f"{path} must be of type {expected}")
-
-
-def _validate_object(value: Mapping[str, Any], schema: JsonSchema, path: str) -> None:
-    required = schema.get("required", ())
-    if not isinstance(required, Sequence) or isinstance(required, (str, bytes)):
-        raise ProviderContractError(f"{path}.required must be an array")
-    missing = [str(key) for key in required if key not in value]
-    if missing:
-        raise ProviderContractError(f"{path} is missing required fields: {', '.join(missing)}")
-    properties = schema.get("properties", {})
-    if not isinstance(properties, Mapping):
-        raise ProviderContractError(f"{path}.properties must be an object")
-    for key, child in properties.items():
-        if key not in value:
-            continue
-        if not isinstance(child, Mapping):
-            raise ProviderContractError(f"{path}.{key} schema must be an object")
-        validate_json_schema(value[key], child, f"{path}.{key}")
-    if schema.get("additionalProperties") is False:
-        extras = set(value) - set(properties)
-        if extras:
-            raise ProviderContractError(
-                f"{path} contains unsupported fields: {', '.join(sorted(extras))}"
-            )
-
-
-def _validate_array(value: list[Any], schema: JsonSchema, path: str) -> None:
-    if "items" not in schema:
-        return
-    items = schema["items"]
-    if not isinstance(items, Mapping):
-        raise ProviderContractError(f"{path}.items must be an object")
-    for index, item in enumerate(value):
-        validate_json_schema(item, items, f"{path}[{index}]")
-
-
-def _schema_sequence(value: Any, path: str) -> list[JsonSchema]:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise ProviderContractError(f"{path} must be an array")
-    if not all(isinstance(item, Mapping) for item in value):
-        raise ProviderContractError(f"{path} entries must be objects")
-    return list(value)
-
-
-def _is_valid(value: Any, schema: JsonSchema) -> bool:
     try:
-        validate_json_schema(value, schema)
-    except ProviderContractError:
-        return False
-    return True
-
-
-def _matches_type(value: Any, expected: str) -> bool:
-    checks = {
-        "null": value is None,
-        "boolean": isinstance(value, bool),
-        "integer": isinstance(value, int) and not isinstance(value, bool),
-        "number": isinstance(value, (int, float)) and not isinstance(value, bool),
-        "string": isinstance(value, str),
-        "array": isinstance(value, list),
-        "object": isinstance(value, Mapping),
-    }
-    if expected not in checks:
-        raise ProviderContractError(f"unsupported JSON Schema type: {expected}")
-    return checks[expected]
+        body = response.json()
+        content = body["choices"][0]["message"]["content"]
+        candidate = json.loads(content) if isinstance(content, str) else content
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        raise ProviderContractError(f"{provider_name} returned an invalid chat completion") from exc
+    if not isinstance(candidate, Mapping):
+        raise ProviderContractError(f"{provider_name} returned a non-object candidate")
+    validate_json_schema(candidate, response_schema)
+    return dict(candidate), dict(body)
 
 
 class OpenAICompatibleProvider:
@@ -136,6 +61,7 @@ class OpenAICompatibleProvider:
         name: str = "openai-compatible",
         timeout_seconds: float = 60.0,
         client: httpx.AsyncClient | None = None,
+        token_counter: InputTokenCounter = DEFAULT_TOKEN_COUNTER,
     ) -> None:
         self._model = model
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -143,6 +69,7 @@ class OpenAICompatibleProvider:
         self._name = name
         self._timeout_seconds = timeout_seconds
         self._client = client
+        self._token_counter = token_counter
 
     @property
     def name(self) -> str:
@@ -151,6 +78,10 @@ class OpenAICompatibleProvider:
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def input_token_counter(self) -> InputTokenCounter:
+        return self._token_counter
 
     async def generate(
         self,
@@ -162,6 +93,13 @@ class OpenAICompatibleProvider:
 
         started = time.perf_counter()
         payload = self._payload(request, response_schema)
+        input_budget = validate_provider_input(
+            request,
+            response_schema,
+            profile=ProviderEnvelopeProfile.OPENAI_CHAT,
+            model=self.model,
+            counter=self._token_counter,
+        )
         try:
             if self._client is not None:
                 response = await self._client.post(
@@ -188,7 +126,13 @@ class OpenAICompatibleProvider:
             raise ProviderUnavailableError(
                 f"{self.name} is unavailable: HTTP {response.status_code}"
             )
-        return self._candidate_from_response(request, response, response_schema, latency_ms)
+        return self._candidate_from_response(
+            request,
+            response,
+            response_schema,
+            latency_ms,
+            input_budget,
+        )
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -197,30 +141,11 @@ class OpenAICompatibleProvider:
         }
 
     def _payload(self, request: StageRequest, response_schema: JsonSchema) -> dict[str, Any]:
-        return {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Return only a JSON object that satisfies the supplied response schema. "
-                        "Do not invent evidence anchors."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(request.to_dict(), ensure_ascii=False),
-                },
-            ],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "readwelt_stage_candidate",
-                    "strict": True,
-                    "schema": dict(response_schema),
-                },
-            },
-        }
+        return openai_chat_payload(
+            request,
+            response_schema,
+            model=self.model,
+        )
 
     def _candidate_from_response(
         self,
@@ -228,16 +153,13 @@ class OpenAICompatibleProvider:
         response: httpx.Response,
         response_schema: JsonSchema,
         latency_ms: float,
+        input_budget: ProviderInputBudgetReceipt,
     ) -> StageCandidate:
-        try:
-            body = response.json()
-            content = body["choices"][0]["message"]["content"]
-            candidate = json.loads(content) if isinstance(content, str) else content
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-            raise ProviderContractError(f"{self.name} returned an invalid chat completion") from exc
-        if not isinstance(candidate, Mapping):
-            raise ProviderContractError(f"{self.name} returned a non-object candidate")
-        validate_json_schema(candidate, response_schema)
+        candidate, body = parse_openai_structured_response(
+            response,
+            response_schema,
+            provider_name=self.name,
+        )
 
         usage = body.get("usage", {})
         token_usage = {
@@ -258,6 +180,7 @@ class OpenAICompatibleProvider:
                 "provider": self.name,
                 "model": self.model,
                 "latency_ms": latency_ms,
+                "provider_input_budget": input_budget.to_dict(),
                 "token_usage": token_usage,
                 "response_id": body.get("id"),
             },

@@ -7,7 +7,12 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .contracts import ProviderContractError, ProviderKind
+from .contracts import (
+    DEFAULT_TOKEN_COUNTER,
+    InputTokenCounter,
+    ProviderContractError,
+    ProviderKind,
+)
 from .openai_compatible import OpenAICompatibleProvider
 
 
@@ -40,6 +45,7 @@ class LocalOpenAICompatibleProvider(OpenAICompatibleProvider):
         name: str = "local-openai-compatible",
         timeout_seconds: float = 60.0,
         client: httpx.AsyncClient | None = None,
+        token_counter: InputTokenCounter = DEFAULT_TOKEN_COUNTER,
     ) -> None:
         _require_loopback(base_url)
         super().__init__(
@@ -49,4 +55,5 @@ class LocalOpenAICompatibleProvider(OpenAICompatibleProvider):
             name=name,
             timeout_seconds=timeout_seconds,
             client=client,
+            token_counter=token_counter,
         )

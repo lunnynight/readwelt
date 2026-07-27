@@ -12,11 +12,15 @@ from readwelt.storage import ManifestStore, ProjectLayout
 from readwelt.storage.serialization import canonical_json_bytes
 
 from .contracts import (
+    DEFAULT_TOKEN_COUNTER,
     AgentInputRequired,
+    InputTokenCounter,
     ProviderContractError,
+    ProviderEnvelopeProfile,
     ProviderKind,
     StageCandidate,
     StageRequest,
+    validate_provider_input,
 )
 from .model_protocol import JsonSchema
 
@@ -30,9 +34,19 @@ class ExternalAgentMailboxProvider:
     name = "external-agent-mailbox"
     model = "external-agent"
 
-    def __init__(self, layout: ProjectLayout) -> None:
+    def __init__(
+        self,
+        layout: ProjectLayout,
+        *,
+        token_counter: InputTokenCounter = DEFAULT_TOKEN_COUNTER,
+    ) -> None:
         self._layout = layout
         self._manifests = ManifestStore()
+        self._token_counter = token_counter
+
+    @property
+    def input_token_counter(self) -> InputTokenCounter:
+        return self._token_counter
 
     async def generate(
         self,
@@ -41,6 +55,13 @@ class ExternalAgentMailboxProvider:
     ) -> StageCandidate:
         request = replace(request, response_schema=dict(response_schema))
         request = self._bind_request_digest(request)
+        validate_provider_input(
+            request,
+            response_schema,
+            profile=ProviderEnvelopeProfile.AGENT_MAILBOX,
+            model=self.model,
+            counter=self._token_counter,
+        )
         candidate_path = self._candidate_path(request.run_id, request.stage)
         if candidate_path.exists():
             candidate = StageCandidate.from_mapping(self._manifests.read(candidate_path))
@@ -50,9 +71,20 @@ class ExternalAgentMailboxProvider:
         if request_path.exists():
             existing = StageRequest.from_mapping(self._manifests.read(request_path))
             if existing != request:
-                raise ProviderContractError(
-                    "an external-agent request is already frozen for this run and stage"
+                previous_digest = request.provenance.get("previous_request_digest")
+                existing_digest = existing.provenance.get("request_digest")
+                if previous_digest != existing_digest:
+                    raise ProviderContractError(
+                        "an external-agent request is already frozen for this run and stage"
+                    )
+                archived = self._stage_path(
+                    request.run_id,
+                    request.stage,
+                    f"pages/request-{str(existing_digest).removeprefix('sha256:')}.json",
                 )
+                archived.parent.mkdir(parents=True, exist_ok=True)
+                request_path.replace(archived)
+                self._manifests.write(request_path, request.to_dict())
         else:
             self._manifests.write(request_path, request.to_dict())
         raise AgentInputRequired(request)
@@ -82,6 +114,9 @@ class ExternalAgentMailboxProvider:
         self._manifests.write(path, candidate.to_dict())
         return candidate
 
+    def has_candidate(self, run_id: str, stage: str) -> bool:
+        return self._candidate_path(run_id, stage).exists()
+
     def reject(self, run_id: str, stage: str, reason: str) -> None:
         """Archive a rejected candidate so the same request can be retried."""
 
@@ -108,6 +143,22 @@ class ExternalAgentMailboxProvider:
                 "rejected_at": datetime.now(UTC).isoformat(),
             },
         )
+
+    def accept_page(self, run_id: str, stage: str) -> None:
+        """Archive a provisionally accepted page candidate before continuation."""
+
+        path = self._candidate_path(run_id, stage)
+        if not path.exists():
+            raise ProviderContractError(f"no external-agent candidate exists for {run_id}/{stage}")
+        content = path.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        accepted = self._stage_path(
+            run_id,
+            stage,
+            f"pages/candidate-{digest}.json",
+        )
+        accepted.parent.mkdir(parents=True, exist_ok=True)
+        path.replace(accepted)
 
     def _request_path(self, run_id: str, stage: str) -> Path:
         return self._stage_path(run_id, stage, "request.json")
@@ -140,7 +191,12 @@ class ExternalAgentMailboxProvider:
         provenance = dict(request.provenance)
         supplied = provenance.pop("request_digest", None)
         unbound = replace(request, provenance=provenance)
-        digest = "sha256:" + hashlib.sha256(canonical_json_bytes(unbound.to_dict())).hexdigest()
+        digest = (
+            "sha256:"
+            + hashlib.sha256(
+                canonical_json_bytes(unbound.to_dict(validate_budget=False))
+            ).hexdigest()
+        )
         if supplied is not None and supplied != digest:
             raise ProviderContractError("StageRequest request_digest is invalid")
         return replace(

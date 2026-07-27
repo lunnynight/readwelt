@@ -35,9 +35,7 @@ class _BackendRegistry[BackendT: (LinguisticBackend, SemanticExtractionBackend)]
             raise BackendNotFoundError(f"backend is not registered: {backend_id}") from error
 
     def descriptors(self) -> tuple[BackendDescriptor, ...]:
-        return tuple(
-            self._backends[backend_id].descriptor for backend_id in sorted(self._backends)
-        )
+        return tuple(self._backends[backend_id].descriptor for backend_id in sorted(self._backends))
 
     def supporting(self, capability: BackendCapability) -> tuple[BackendT, ...]:
         return tuple(

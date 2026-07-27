@@ -10,6 +10,7 @@ license = "MIT"
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "httpx>=0.28",
+  "pydantic>=2.12,<3",
   "xberg==1.0.0rc38",
 ]
 
@@ -25,10 +26,18 @@ dense = [
   "sentence-transformers>=5.1,<6",
   "transformers>=4.41,<5",
 ]
+linguistic = [
+  "stanza==1.14.0",
+]
+structural = [
+  "docling[rapidocr]==2.114.0",
+]
 all = [
   "fastapi>=0.115",
   "uvicorn>=0.34",
   "mcp>=1.27,<2",
+  "docling[rapidocr]==2.114.0",
+  "stanza==1.14.0",
 ]
 
 [project.scripts]

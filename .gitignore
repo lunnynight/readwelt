@@ -13,14 +13,21 @@ target/
 *.egg-info/
 
 # Local analysis and internal design material
-.sentrux/
+**/.sentrux/
+!/.sentrux/
+/.sentrux/*
+!/.sentrux/baseline.json
+!/.sentrux/rules.toml
 .understand-anything/
+.research-checkouts/
+.research-inputs/
 design/
 research/
 
 # Readwelt local projects and model/runtime caches
 .readwelt/
-.sentrux/agent-sessions/
+.readwelt-*/
+/.sentrux/agent-sessions/
 
 # Editor and OS files
 .DS_Store

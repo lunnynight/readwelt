@@ -3,38 +3,31 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
-import json
 from collections.abc import Coroutine, Mapping, Sequence
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
-from readwelt.article_graph import ArticleGraphBuilder, ArticleGraphBuildResult
+from readwelt.article_graph import (
+    ArticleGraphBuilder,
+    ArticleGraphBuildResult,
+)
 from readwelt.batch import BatchResult, LocalBatchPipeline
 from readwelt.domain import (
-    EpistemicStatus,
-    EvidencePacket,
     ExecutionStatus,
-    ModelStatus,
-    PublicationStatus,
     ReadingRun,
     ReadingStage,
     SourceDocumentSnapshot,
-    StageArtifact,
-    stable_id,
 )
-from readwelt.projections import write_projection_artifacts
+from readwelt.extraction import (
+    DeterministicSemanticExtractionBackend,
+    configured_argument_semantic_backend,
+)
 from readwelt.providers import (
-    AgentInputRequired,
     CandidateProvider,
     ExternalAgentMailboxProvider,
-    ProviderConflictError,
     ProviderKind,
-    ProviderMode,
     ProviderResolver,
     ProviderSelection,
     ProviderUnavailableError,
@@ -47,16 +40,22 @@ from readwelt.semantic import (
     DenseEncoder,
     HybridRetriever,
     SemanticAtlas,
-    SemanticEvidencePacket,
     SemanticPreprocessor,
-    build_stage_retrieval_plan,
     configured_dense_encoder,
 )
-from readwelt.stage_views import StageContext, StageView, StageViewProjector
-from readwelt.stages import AgentCandidateRejected, SixStageReadingEngine
+from readwelt.stage_views import StageViewProjector
 from readwelt.storage import ArtifactStore, EventLog, ManifestStore, ProjectLayout
 
-from .provider_runtime import AuditedCandidateProvider, ResolvingCandidateProvider
+from .project_artifacts import get_artifact as _get_artifact
+from .project_artifacts import prepare_document as _prepare_document
+from .project_artifacts import prepare_snapshot as _prepare_snapshot_impl
+from .project_artifacts import validate_run_artifacts as _validate_run_artifacts_impl
+from .project_selection import default_selection as _default_selection_impl
+from .project_selection import new_run_id as _new_run_id_impl
+from .project_selection import normalize_selection as _normalize_selection_impl
+from .read_execution import execute_read as _execute_read_impl
+from .run_lifecycle import emit_run_event as _emit_run_event
+from .run_lifecycle import write_application_run as _write_run
 from .run_store import ApplicationRunStore
 
 _PIPELINE_POLICY = "readwelt-six-stage-v1"
@@ -97,7 +96,17 @@ class ReadweltApplicationService:
         self._manifests = ManifestStore()
         self._events = EventLog()
         self._semantic = semantic_preprocessor or SemanticPreprocessor()
-        self._article_graph = ArticleGraphBuilder()
+        configured_argument_backend = configured_argument_semantic_backend()
+        self._article_graph = ArticleGraphBuilder(
+            semantic_backends=(
+                None
+                if configured_argument_backend is None
+                else (
+                    configured_argument_backend,
+                    DeterministicSemanticExtractionBackend(),
+                )
+            )
+        )
         self._stage_views = StageViewProjector()
         self._retriever = HybridRetriever(
             dense_encoder=(
@@ -168,19 +177,7 @@ class ReadweltApplicationService:
         token_budget: int | None = None,
     ) -> SemanticAtlas:
         del purpose, token_budget
-        snapshot = self._runner.get_snapshot(document_id)
-        atlas, atlas_ref, graph_build, graph_refs = self._prepare_snapshot(snapshot)
-        manifest_path = self._layout.document_manifest(snapshot.document_id)
-        manifest = self._manifests.read(manifest_path)
-        manifest["semantic_atlas"] = atlas
-        manifest["semantic_atlas_artifact"] = atlas_ref
-        manifest["article_graph"] = graph_build.graph
-        manifest["article_graph_artifact"] = next(
-            item for item in graph_refs if item.artifact_type == "article_graph"
-        )
-        manifest["article_graph_build_artifacts"] = graph_refs
-        self._manifests.write(manifest_path, manifest)
-        return atlas
+        return _prepare_document(self, document_id)
 
     async def prepare_async(
         self,
@@ -220,6 +217,7 @@ class ReadweltApplicationService:
             run_id=run_id,
             purpose=purpose,
             token_budget=token_budget,
+            hard_serialized_token_budget=token_budget,
             created_at=datetime.now(UTC),
         )
 
@@ -249,6 +247,23 @@ class ReadweltApplicationService:
     def resume(self, run_id: str) -> ReadingRun:
         return _run_sync(self.resume_async(run_id))
 
+    def resume_stage_page(
+        self,
+        run_id: str,
+        stage: str | ReadingStage,
+        *,
+        targeted_anchor_ids: tuple[str, ...] = (),
+        rescue_level: str = "section",
+    ) -> ReadingRun:
+        parsed_stage = ReadingStage(stage)
+        self._run_store.configure_stage_navigation(
+            run_id,
+            parsed_stage,
+            targeted_anchor_ids=targeted_anchor_ids,
+            rescue_level=rescue_level,
+        )
+        return self.resume(run_id)
+
     async def resume_async(self, run_id: str) -> ReadingRun:
         manifest = self._manifests.read(self._layout.run_manifest(run_id))
         if manifest.get("pipeline_policy") != _PIPELINE_POLICY:
@@ -273,6 +288,11 @@ class ReadweltApplicationService:
             token_budget=(
                 int(manifest["token_budget"]) if manifest.get("token_budget") is not None else None
             ),
+            hard_serialized_token_budget=(
+                int(manifest["hard_serialized_token_budget"])
+                if manifest.get("hard_serialized_token_budget") is not None
+                else None
+            ),
             created_at=run.created_at,
         )
 
@@ -283,37 +303,7 @@ class ReadweltApplicationService:
         return self.get_run(run_id)
 
     def get_artifact(self, digest: str) -> dict[str, Any]:
-        hexadecimal = digest.removeprefix("sha256:")
-        if len(hexadecimal) != 64 or any(
-            char not in "0123456789abcdefABCDEF" for char in hexadecimal
-        ):
-            raise ValueError("artifact digest must be a sha256 hex digest")
-        hexadecimal = hexadecimal.lower()
-        path = (
-            self._layout.root
-            / "objects"
-            / "sha256"
-            / hexadecimal[:2]
-            / hexadecimal[2:4]
-            / hexadecimal
-        ).resolve()
-        path.relative_to(self._layout.root)
-        content = path.read_bytes()
-        actual = hashlib.sha256(content).hexdigest()
-        if actual != hexadecimal:
-            raise ValueError(f"artifact digest mismatch: sha256:{hexadecimal}")
-        result: dict[str, Any] = {
-            "digest": f"sha256:{hexadecimal}",
-            "path": self._layout.relative(path),
-            "size": len(content),
-        }
-        try:
-            result["content"] = content.decode("utf-8")
-            result["content_encoding"] = "utf-8"
-        except UnicodeDecodeError:
-            result["content"] = base64.b64encode(content).decode("ascii")
-            result["content_encoding"] = "base64"
-        return result
+        return _get_artifact(self, digest)
 
     def pull_stage_request(self, run_id: str, stage: str) -> StageRequest:
         return self._mailbox.pull(run_id, stage)
@@ -349,6 +339,11 @@ class ReadweltApplicationService:
                     if manifest.get("token_budget") is not None
                     else None
                 ),
+                hard_serialized_token_budget=(
+                    int(manifest["hard_serialized_token_budget"])
+                    if manifest.get("hard_serialized_token_budget") is not None
+                    else None
+                ),
                 created_at=datetime.fromisoformat(str(manifest["created_at"])),
             )
         )
@@ -363,60 +358,7 @@ class ReadweltApplicationService:
         self,
         snapshot: SourceDocumentSnapshot,
     ) -> tuple[SemanticAtlas, Any, ArticleGraphBuildResult, tuple[Any, ...]]:
-        normalized_path = (self._layout.root / snapshot.normalized_text_ref).resolve()
-        normalized_path.relative_to(self._layout.root)
-        normalized_text = normalized_path.read_text(encoding="utf-8")
-        digest = f"sha256:{hashlib.sha256(normalized_text.encode()).hexdigest()}"
-        if digest != snapshot.content_digest:
-            raise ValueError(f"normalized text digest mismatch: {snapshot.snapshot_id}")
-        atlas = self._semantic.prepare(snapshot, normalized_text)
-        atlas_ref = self._artifacts.put_json(
-            atlas,
-            artifact_type="semantic_atlas",
-            schema_version=atlas.schema_version,
-        )
-        graph_build = self._article_graph.build(snapshot, normalized_text)
-        graph_refs = (
-            self._artifacts.put_json(
-                graph_build.unitization,
-                artifact_type="anchored_text_unitization",
-                schema_version=graph_build.unitization.schema_version,
-            ),
-            *(
-                self._artifacts.put_json(
-                    extraction,
-                    artifact_type="graph_extraction",
-                    schema_version=extraction.schema_version,
-                )
-                for extraction in graph_build.extractions
-            ),
-            self._artifacts.put_json(
-                graph_build.merge_report,
-                artifact_type="article_graph_merge_report",
-                schema_version=graph_build.merge_report.schema_version,
-            ),
-            self._artifacts.put_json(
-                graph_build.provenance_ledger,
-                artifact_type="article_graph_provenance_ledger",
-                schema_version=graph_build.provenance_ledger.schema_version,
-            ),
-            self._artifacts.put_json(
-                graph_build.source_index,
-                artifact_type="article_graph_source_index",
-                schema_version=graph_build.source_index.schema_version,
-            ),
-            self._artifacts.put_json(
-                graph_build.graph,
-                artifact_type="article_graph",
-                schema_version=graph_build.graph.schema_version,
-            ),
-            self._artifacts.put_json(
-                graph_build,
-                artifact_type="article_graph_build",
-                schema_version=graph_build.schema_version,
-            ),
-        )
-        return atlas, atlas_ref, graph_build, graph_refs
+        return _prepare_snapshot_impl(self, snapshot)
 
     async def _execute_read(
         self,
@@ -426,267 +368,28 @@ class ReadweltApplicationService:
         run_id: str,
         purpose: str,
         token_budget: int | None,
+        hard_serialized_token_budget: int | None,
         created_at: datetime,
     ) -> ReadingRun:
-        atlas, atlas_ref, graph_build, graph_refs = self._prepare_snapshot(snapshot)
-        effective_budget = (
-            token_budget
-            if token_budget is not None
-            else sum(segment.statistics.token_count for segment in atlas.segments)
-        )
-        base_plan = build_stage_retrieval_plan(
-            ReadingStage.MAINLINE,
+        return await _execute_read_impl(
+            self,
+            snapshot,
+            selection,
+            run_id=run_id,
             purpose=purpose,
-            token_budget=effective_budget,
+            token_budget=token_budget,
+            hard_serialized_token_budget=hard_serialized_token_budget,
+            created_at=created_at,
         )
-        semantic_packet = self._retriever.retrieve(atlas, base_plan)
-        stage_packets: dict[ReadingStage, SemanticEvidencePacket] = {
-            ReadingStage.MAINLINE: semantic_packet,
-        }
-        stage_view_refs: dict[ReadingStage, Any] = {}
-        evidence = cast(EvidencePacket, semantic_packet.to_stage_packet(run_id))
-        initial_artifacts = self._run_store.load_stage_artifacts(run_id)
-        if selection.mode is ProviderMode.AGENT_TAKEOVER:
-            selected_provider: CandidateProvider = self._mailbox
-        else:
-            selected_provider = ResolvingCandidateProvider(self._resolver, selection)
-        provider: CandidateProvider = AuditedCandidateProvider(
-            selected_provider,
-            self._run_store,
-        )
-        engine = SixStageReadingEngine(
-            provider,
-            retry_invalid_candidates=selection.mode is ProviderMode.AGENT_TAKEOVER,
-        )
-
-        def evidence_for_stage(
-            stage: ReadingStage,
-            artifacts: Sequence[StageArtifact],
-        ) -> EvidencePacket:
-            if stage is ReadingStage.MAINLINE and not artifacts:
-                return evidence
-            if stage is ReadingStage.TRANSFER and artifacts:
-                upstream_claims = artifacts[-1].accepted_claims
-            else:
-                upstream_claims = tuple(
-                    claim for artifact in artifacts for claim in artifact.accepted_claims
-                )
-            plan = build_stage_retrieval_plan(
-                stage,
-                purpose=purpose,
-                token_budget=effective_budget,
-                upstream_claims=upstream_claims,
-            )
-            packet = self._retriever.retrieve(atlas, plan)
-            stage_packets[stage] = packet
-            return cast(EvidencePacket, packet.to_stage_packet(run_id))
-
-        def stage_view_for_stage(
-            stage: ReadingStage,
-            artifacts: Sequence[StageArtifact],
-        ) -> StageView:
-            upstream_claims = (
-                artifacts[-1].accepted_claims
-                if stage is ReadingStage.TRANSFER and artifacts
-                else tuple(
-                    claim for artifact in artifacts for claim in artifact.accepted_claims
-                )
-            )
-            view = self._stage_views.project(
-                graph_build,
-                StageContext(
-                    stage=stage,
-                    task_intent=purpose,
-                    token_budget=effective_budget,
-                    upstream_claim_ids=tuple(claim.claim_id for claim in upstream_claims),
-                    unresolved_gap_ids=tuple(
-                        gap.gap_id
-                        for artifact in artifacts
-                        for gap in artifact.gaps
-                        if not gap.resolved
-                    ),
-                ),
-                upstream_claims=upstream_claims,
-                locator_packet=stage_packets.get(stage),
-            )
-            stage_view_refs[stage] = self._artifacts.put_json(
-                view,
-                artifact_type="stage_view",
-                schema_version=view.schema_version,
-            )
-            return view
-
-        source_ref = self._artifacts.put_json(snapshot, artifact_type="source_snapshot")
-        manifest_path = self._layout.run_manifest(run_id)
-        if manifest_path.exists():
-            prior = self._runner.get(run_id)
-            running = replace(
-                prior,
-                execution_status=ExecutionStatus.RUNNING,
-                current_task="six_stage_reading",
-                completed_at=None,
-            )
-        else:
-            running = ReadingRun(
-                run_id=run_id,
-                schema_version="1",
-                snapshot_id=snapshot.snapshot_id,
-                execution_status=ExecutionStatus.RUNNING,
-                epistemic_status=EpistemicStatus.UNDERDETERMINED,
-                model_status=ModelStatus.READY,
-                publication_status=PublicationStatus.WITHHELD,
-                current_task="six_stage_reading",
-                artifacts=(source_ref, atlas_ref, *graph_refs),
-                warnings=(),
-                created_at=created_at,
-            )
-        self._write_application_run(
-            running,
-            selection=selection,
-            purpose=purpose,
-            token_budget=effective_budget,
-        )
-        self._emit(run_id, "run_started", "six_stage_reading")
-
-        async def persist_stage(artifact: StageArtifact) -> None:
-            reference = self._run_store.append_stage_artifact(run_id, artifact)
-            self._emit(run_id, "stage_settled", artifact.stage.value)
-            if reference.status.value != "completed":
-                raise ValueError("settled stage artifact was not completed")
-
-        try:
-            bundle = await engine.run(
-                snapshot,
-                evidence,
-                initial_artifacts=initial_artifacts,
-                artifact_sink=persist_stage,
-                evidence_factory=evidence_for_stage,
-                stage_view_factory=stage_view_for_stage,
-            )
-        except AgentCandidateRejected as exc:
-            self._mailbox.reject(run_id, exc.stage, exc.reason)
-            persisted = self._runner.get(run_id)
-            awaiting_retry = replace(
-                persisted,
-                artifacts=tuple(
-                    dict.fromkeys((*persisted.artifacts, *stage_view_refs.values()))
-                ),
-                execution_status=ExecutionStatus.PENDING,
-                model_status=ModelStatus.READY,
-                current_task=f"awaiting_agent:{exc.stage}",
-                warnings=(f"{exc.stage}: candidate rejected: {exc.reason}",),
-                completed_at=None,
-            )
-            self._write_application_run(
-                awaiting_retry,
-                selection=selection,
-                purpose=purpose,
-                token_budget=effective_budget,
-            )
-            self._emit(run_id, "agent_candidate_rejected", exc.stage)
-            return awaiting_retry
-        except AgentInputRequired as exc:
-            persisted = self._runner.get(run_id)
-            awaiting = replace(
-                persisted,
-                artifacts=tuple(
-                    dict.fromkeys((*persisted.artifacts, *stage_view_refs.values()))
-                ),
-                execution_status=ExecutionStatus.PENDING,
-                current_task=f"awaiting_agent:{exc.request.stage}",
-            )
-            self._write_application_run(
-                awaiting,
-                selection=selection,
-                purpose=purpose,
-                token_budget=effective_budget,
-            )
-            self._emit(run_id, "agent_input_required", exc.request.stage)
-            return awaiting
-
-        projections = write_projection_artifacts(bundle, self._artifacts)
-        failed = bundle.execution_status is ExecutionStatus.FAILED
-        persisted = self._runner.get(run_id)
-        completed = replace(
-            persisted,
-            execution_status=bundle.execution_status,
-            epistemic_status=bundle.epistemic_status,
-            model_status=ModelStatus.FAILED if failed else ModelStatus.READY,
-            publication_status=(
-                PublicationStatus.WITHHELD if failed else PublicationStatus.INTERNAL
-            ),
-            current_task="failed" if failed else "completed",
-            artifacts=(
-                *persisted.artifacts,
-                *(
-                    reference
-                    for reference in stage_view_refs.values()
-                    if reference not in persisted.artifacts
-                ),
-                projections.bundle,
-                projections.report,
-            ),
-            warnings=((bundle.failure,) if bundle.failure else ()),
-            completed_at=None if failed else datetime.now(UTC),
-            content_digest=projections.bundle.content_digest,
-        )
-        self._write_application_run(
-            completed,
-            selection=selection,
-            purpose=purpose,
-            token_budget=effective_budget,
-        )
-        self._emit(
-            run_id,
-            "run_failed" if failed else "run_completed",
-            completed.current_task,
-        )
-        return completed
 
     def _normalize_selection(
         self,
         value: ProviderSelection | Mapping[str, Any] | None,
     ) -> ProviderSelection:
-        if isinstance(value, ProviderSelection):
-            selection = value
-        elif isinstance(value, Mapping):
-            selection = ProviderSelection.build(
-                mode=str(value.get("mode", ProviderMode.PRIMARY)),
-                primary=value.get("primary"),
-                candidates=value.get("candidates", ()),
-            )
-        elif value is None:
-            selection = self._default_selection()
-        else:
-            raise TypeError("provider_selection must be a ProviderSelection or mapping")
-        if (
-            selection.mode is ProviderMode.PRIMARY
-            and selection.primary is None
-            and not selection.candidates
-        ):
-            selection = self._default_selection()
-        if selection.mode is not ProviderMode.AGENT_TAKEOVER and selection.primary is None:
-            raise ProviderUnavailableError("provider selection has no primary provider")
-        return selection
+        return _normalize_selection_impl(self, value)
 
     def _default_selection(self) -> ProviderSelection:
-        model_kinds = tuple(
-            dict.fromkeys(
-                provider.kind
-                for provider in self._configured_providers
-                if provider.kind is not ProviderKind.AGENT
-            )
-        )
-        if not model_kinds:
-            raise ProviderUnavailableError(
-                "no model provider is configured; select agent_takeover or configure "
-                "a local/API provider"
-            )
-        if len(model_kinds) > 1:
-            raise ProviderConflictError(
-                "multiple providers are configured; select primary, compare, or fallback"
-            )
-        return ProviderSelection.build(primary=model_kinds[0])
+        return _default_selection_impl(self)
 
     @staticmethod
     def _new_run_id(
@@ -695,14 +398,11 @@ class ReadweltApplicationService:
         *,
         idempotency_key: str,
     ) -> str:
-        policy = json.dumps(selection.to_dict(), sort_keys=True, separators=(",", ":"))
-        return stable_id(
-            "run",
-            snapshot.snapshot_id,
-            _PIPELINE_POLICY,
-            policy,
-            "schema:1",
-            idempotency_key,
+        return _new_run_id_impl(
+            snapshot,
+            selection,
+            pipeline_policy=_PIPELINE_POLICY,
+            idempotency_key=idempotency_key,
         )
 
     def _write_application_run(
@@ -712,35 +412,23 @@ class ReadweltApplicationService:
         selection: ProviderSelection,
         purpose: str,
         token_budget: int,
+        hard_serialized_token_budget: int | None,
     ) -> None:
-        self._run_store.write(
+        _write_run(
+            self._run_store,
             run,
             pipeline_policy=_PIPELINE_POLICY,
             selection=selection,
             purpose=purpose,
             token_budget=token_budget,
+            hard_serialized_token_budget=hard_serialized_token_budget,
         )
 
     def _emit(self, run_id: str, event_type: str, task: str) -> None:
-        self._events.append(
-            self._layout.run_events(run_id),
-            {
-                "schema_version": "1",
-                "event_type": event_type,
-                "run_id": run_id,
-                "task": task,
-                "occurred_at": datetime.now(UTC),
-            },
-        )
+        _emit_run_event(self._events, self._layout, run_id, event_type, task)
 
     def _validate_run_artifacts(self, run: ReadingRun) -> None:
-        for artifact in run.artifacts:
-            try:
-                self._artifacts.read_bytes(artifact)
-            except (FileNotFoundError, ValueError) as exc:
-                raise ValueError(
-                    f"run artifact is missing or corrupt: {artifact.artifact_id}"
-                ) from exc
+        _validate_run_artifacts_impl(self, run)
 
 
 ReadweltProject = ReadweltApplicationService

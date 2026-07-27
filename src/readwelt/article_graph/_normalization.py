@@ -80,22 +80,24 @@ def sorted_union(groups: Iterable[Iterable[str]]) -> tuple[str, ...]:
 
 def _normalize_node(candidate: Any) -> dict[str, Any]:
     candidate_id = str(_read(candidate, "candidate_id", "node_id", "id"))
+    confidence, confidence_method = _confidence(candidate)
     return {
         "candidate_id": candidate_id,
         "kind": str(_read(candidate, "kind", "node_kind", "type")).strip().lower(),
         "label": _optional_text(_read(candidate, "label", "name", default=None)),
         "text": _optional_text(_read(candidate, "text", "exact_text", default=None)),
-        "confidence": _confidence(candidate),
+        "confidence": confidence,
+        "confidence_method": confidence_method,
         "source_unit_ids": _source_unit_ids(candidate),
+        "source_element_ids": _source_element_ids(candidate),
         "ambiguity": _ambiguities(_read(candidate, "ambiguity", "ambiguities", default=())),
-        "epistemic_status": _status(
-            _read(candidate, "epistemic_status", "status", "origin")
-        ),
+        "epistemic_status": _status(_read(candidate, "epistemic_status", "status", "origin")),
         "attributes": _attributes(_read(candidate, "attributes", default={})),
     }
 
 
 def _normalize_edge(candidate: Any) -> dict[str, Any]:
+    confidence, confidence_method = _confidence(candidate)
     return {
         "candidate_id": str(_read(candidate, "candidate_id", "edge_id", "id")),
         "relation": str(_read(candidate, "relation", "predicate", "kind")).strip(),
@@ -105,12 +107,12 @@ def _normalize_edge(candidate: Any) -> dict[str, Any]:
         "target_candidate_id": str(
             _read(candidate, "target_candidate_id", "target_node_id", "target_id")
         ),
-        "confidence": _confidence(candidate),
+        "confidence": confidence,
+        "confidence_method": confidence_method,
         "source_unit_ids": _source_unit_ids(candidate),
+        "source_element_ids": _source_element_ids(candidate),
         "ambiguity": _ambiguities(_read(candidate, "ambiguity", "ambiguities", default=())),
-        "epistemic_status": _status(
-            _read(candidate, "epistemic_status", "status", "origin")
-        ),
+        "epistemic_status": _status(_read(candidate, "epistemic_status", "status", "origin")),
         "attributes": _attributes(_read(candidate, "attributes", default={})),
     }
 
@@ -144,9 +146,45 @@ def _source_unit_ids(value: Any) -> tuple[str, ...]:
     return tuple(sorted(set(unit_ids)))
 
 
-def _confidence(value: Any) -> float:
-    confidence = _read(value, "confidence", default=1.0)
-    return float(_read(confidence, "score", default=confidence))
+def _source_element_ids(value: Any) -> tuple[str, ...]:
+    direct = _read(value, "source_element_ids", "element_ids", default=None)
+    if direct is not None:
+        return _string_tuple(direct)
+    grounding = _read(value, "grounding", default=None)
+    refs = (
+        _read(grounding, "source_references", "source_refs", default=())
+        if grounding is not None
+        else _read(value, "source_refs", "source_references", default=())
+    )
+    return tuple(
+        sorted(
+            {
+                str(element_id)
+                for ref in refs
+                if (
+                    element_id := _read(
+                        ref,
+                        "element_id",
+                        "source_element_id",
+                        default=None,
+                    )
+                )
+            }
+        )
+    )
+
+
+def _confidence(value: Any) -> tuple[float | None, str]:
+    confidence = _read(value, "confidence", default=None)
+    if confidence is None:
+        return None, "unresolved"
+    score = float(_read(confidence, "score", default=confidence))
+    method = _read(
+        confidence,
+        "method",
+        default=_read(value, "confidence_method", default=None),
+    )
+    return score, str(method) if method is not None else "unresolved"
 
 
 def _ambiguities(values: Any) -> tuple[str, ...]:

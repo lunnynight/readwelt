@@ -80,8 +80,40 @@ def test_xberg_element_projection_uses_only_emitted_fields() -> None:
             exact_text="Body",
             kind="narrative_text",
             element_id="7",
+            reading_order=7,
             page=3,
             bounding_box=(1.0, 2.0, 3.0, 4.0),
+            native_reference="7",
         ),
     )
     assert findings == ("xberg_elements_available:1",)
+
+
+def test_xberg_node_preserves_native_navigation_and_content_roles() -> None:
+    node = SimpleNamespace(
+        id="figure-1",
+        parent="section-1",
+        page=4,
+        bbox=SimpleNamespace(x0=1, y0=2, x1=3, y1=4),
+        content=(
+            '{"text":"Diagram","node_type":"image","reading_order":8,'
+            '"children":["caption-1"],'
+            '"relationships":{"caption":["caption-1"]},'
+            '"heading_trail":["Results"]}'
+        ),
+    )
+
+    structure, findings = XbergDocumentAdapter._available_structure(
+        SimpleNamespace(document=SimpleNamespace(nodes=[node]), elements=None)
+    )
+
+    assert len(structure) == 1
+    record = structure[0]
+    assert record.element_id == "figure-1"
+    assert record.kind == "figure"
+    assert record.parent_element_id == "section-1"
+    assert record.child_element_ids == ("caption-1",)
+    assert record.structural_relations == (("caption", "caption-1"),)
+    assert record.heading_trail == ("Results",)
+    assert record.reading_order == 8
+    assert findings == ("xberg_document_nodes_available:1",)

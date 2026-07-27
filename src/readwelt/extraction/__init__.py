@@ -25,6 +25,11 @@ from .models import (
     graph_extraction_digest,
     stable_id,
 )
+from .openai_semantic import (
+    ARGUMENT_RESPONSE_SCHEMA,
+    OpenAIArgumentSemanticBackend,
+    configured_argument_semantic_backend,
+)
 from .protocols import LinguisticBackend, SemanticExtractionBackend
 from .registry import (
     BackendAlreadyRegisteredError,
@@ -32,9 +37,21 @@ from .registry import (
     LinguisticBackendRegistry,
     SemanticExtractionBackendRegistry,
 )
+from .stanza import StanzaLinguisticBackend
+from .taxonomy import (
+    ARGUMENT_TAXONOMY_SCHEMA_VERSION,
+    CORE_CANDIDATE_KINDS,
+    CORE_RELATION_KINDS,
+    CoreCandidateKind,
+    CoreRelationKind,
+    valid_candidate_kind,
+    valid_relation_kind,
+)
 
 __all__ = [
     "Ambiguity",
+    "ARGUMENT_TAXONOMY_SCHEMA_VERSION",
+    "ARGUMENT_RESPONSE_SCHEMA",
     "BackendAlreadyRegisteredError",
     "BackendCapability",
     "BackendDescriptor",
@@ -43,7 +60,11 @@ __all__ = [
     "CandidateNode",
     "CapabilityOutcome",
     "CapabilityStatus",
+    "CORE_CANDIDATE_KINDS",
+    "CORE_RELATION_KINDS",
     "ConfidenceAssessment",
+    "CoreCandidateKind",
+    "CoreRelationKind",
     "DegradationReport",
     "DeterministicLinguisticBackend",
     "DeterministicSemanticExtractionBackend",
@@ -54,11 +75,16 @@ __all__ = [
     "LinguisticBackend",
     "LinguisticBackendRegistry",
     "NetworkBehavior",
+    "OpenAIArgumentSemanticBackend",
     "SemanticExtractionBackend",
     "SemanticExtractionBackendRegistry",
     "SourceGrounding",
     "SourceReference",
+    "StanzaLinguisticBackend",
     "UnresolvedReference",
     "graph_extraction_digest",
     "stable_id",
+    "valid_candidate_kind",
+    "valid_relation_kind",
+    "configured_argument_semantic_backend",
 ]

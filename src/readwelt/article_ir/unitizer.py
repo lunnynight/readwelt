@@ -6,20 +6,24 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from readwelt.domain.documents import DocumentSection, SourceDocumentSnapshot
+from readwelt.domain.documents import DocumentSection, SourceDocumentSnapshot, SourceElement
 from readwelt.domain.ids import stable_id
 
 from .models import (
+    ARTICLE_SOURCE_PLANE_SCHEMA_VERSION,
     AnchoredTextUnit,
     CoverageRecord,
     CoverageReport,
     CoverageStatus,
+    SourcePlaneCoverageManifest,
+    SourceRangeKind,
+    SourceRangeRecord,
     SourceReference,
     UnitizationResult,
 )
 
 _UNIT_SCHEMA = "anchored-text-unit.v1"
-_UNITIZATION_SCHEMA = "anchored-text-unitization.v1"
+_UNITIZATION_SCHEMA = ARTICLE_SOURCE_PLANE_SCHEMA_VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,24 +51,66 @@ class DeterministicUnitizer:
             units,
             problem_records,
         )
+        source_ranges = self._source_ranges(snapshot, normalized_text, range_records)
         structure_records = self._structure_coverage(snapshot, candidates)
+        element_records = self._element_coverage(snapshot)
+        capability_records = self._capability_coverage(snapshot)
         represented_problem_ids = {
             record.detail
             for record in range_records
             if record.status == "unsupported" and record.detail is not None
         }
         unplaced_problems = tuple(
-            record
-            for record in problem_records
-            if record.record_id not in represented_problem_ids
+            record for record in problem_records if record.record_id not in represented_problem_ids
         )
-        records = tuple((*range_records, *unplaced_problems, *structure_records))
+        records = tuple(
+            (
+                *range_records,
+                *unplaced_problems,
+                *element_records,
+                *structure_records,
+                *capability_records,
+            )
+        )
         coverage = self._coverage_report(snapshot, normalized_text, records)
+        coverage_manifest = self._coverage_manifest(
+            snapshot,
+            normalized_text,
+            range_records,
+            element_records,
+            structure_records,
+            capability_records,
+        )
         payload = {
             "schema_version": self.schema_version,
             "snapshot_id": snapshot.snapshot_id,
             "units": [_unit_value(unit) for unit in units],
+            "source_ranges": [_source_range_value(item) for item in source_ranges],
+            "source_elements": [
+                (
+                    element.element_id,
+                    element.schema_version,
+                    element.ordinal,
+                    element.reading_order,
+                    element.projection_status,
+                    element.kind,
+                    element.content_layer,
+                    element.start_offset,
+                    element.end_offset,
+                    element.parent_element_id,
+                    element.child_element_ids,
+                    element.previous_element_id,
+                    element.next_element_id,
+                    element.structural_relations,
+                    element.page,
+                    element.bounding_box,
+                    element.native_reference,
+                    element.raw_payload_ref,
+                )
+                for element in snapshot.source_elements
+            ],
             "coverage_digest": coverage.content_digest,
+            "coverage_manifest_digest": coverage_manifest.content_digest,
         }
         return UnitizationResult(
             schema_version=self.schema_version,
@@ -72,6 +118,9 @@ class DeterministicUnitizer:
             units=units,
             coverage=coverage,
             content_digest=_digest(payload),
+            source_ranges=source_ranges,
+            source_elements=snapshot.source_elements,
+            coverage_manifest=coverage_manifest,
         )
 
     def _candidates(
@@ -144,6 +193,12 @@ class DeterministicUnitizer:
         snapshot: SourceDocumentSnapshot,
         candidates: tuple[_Candidate, ...],
     ) -> tuple[AnchoredTextUnit, ...]:
+        element_by_id = {element.element_id: element for element in snapshot.source_elements}
+        element_to_unit = {
+            candidate.section.element_id: candidate.unit_id
+            for candidate in candidates
+            if candidate.section.element_id is not None
+        }
         units: list[AnchoredTextUnit] = []
         for ordinal, candidate in enumerate(candidates):
             section = candidate.section
@@ -184,7 +239,11 @@ class DeterministicUnitizer:
                     kind=section.kind or "paragraph",
                     exact_text=anchor.exact_text,
                     content_hash=_text_hash(anchor.exact_text),
-                    structural_path=(section.section_id,),
+                    structural_path=_structural_path(
+                        section.element_id,
+                        section.section_id,
+                        element_by_id,
+                    ),
                     heading_trail=(
                         section.heading_trail
                         if section.heading_trail
@@ -193,15 +252,76 @@ class DeterministicUnitizer:
                         else ()
                     ),
                     source_references=(reference,),
+                    parent_unit_id=(
+                        element_to_unit.get(section.parent_element_id)
+                        if section.parent_element_id is not None
+                        else None
+                    ),
                     previous_unit_id=candidates[ordinal - 1].unit_id if ordinal else None,
                     next_unit_id=(
-                        candidates[ordinal + 1].unit_id
-                        if ordinal + 1 < len(candidates)
-                        else None
+                        candidates[ordinal + 1].unit_id if ordinal + 1 < len(candidates) else None
                     ),
                 )
             )
         return tuple(units)
+
+    @staticmethod
+    def _element_coverage(
+        snapshot: SourceDocumentSnapshot,
+    ) -> tuple[CoverageRecord, ...]:
+        records: list[CoverageRecord] = []
+        for element in snapshot.source_elements:
+            status: CoverageStatus = (
+                "unsupported" if element.projection_status == "unresolved" else "covered"
+            )
+            records.append(
+                CoverageRecord(
+                    record_id=stable_id(
+                        "coverage",
+                        snapshot.snapshot_id,
+                        "element",
+                        element.element_id,
+                        element.projection_status,
+                    ),
+                    status=status,
+                    scope="element",
+                    reason=f"source_element_{element.projection_status}",
+                    snapshot_id=snapshot.snapshot_id,
+                    start_offset=element.start_offset,
+                    end_offset=element.end_offset,
+                    detail=element.element_id,
+                )
+            )
+        return tuple(records)
+
+    @staticmethod
+    def _capability_coverage(
+        snapshot: SourceDocumentSnapshot,
+    ) -> tuple[CoverageRecord, ...]:
+        records: list[CoverageRecord] = []
+        for ordinal, finding in enumerate(snapshot.parse_findings):
+            lowered = finding.casefold()
+            status: CoverageStatus = (
+                "unsupported"
+                if any(marker in lowered for marker in ("unsupported", "unresolved", "not_exposed"))
+                else "covered"
+            )
+            records.append(
+                CoverageRecord(
+                    record_id=stable_id(
+                        "coverage",
+                        snapshot.snapshot_id,
+                        "capability",
+                        str(ordinal),
+                        finding,
+                    ),
+                    status=status,
+                    scope="capability",
+                    reason=finding,
+                    snapshot_id=snapshot.snapshot_id,
+                )
+            )
+        return tuple(records)
 
     @staticmethod
     def _range_coverage(
@@ -221,9 +341,6 @@ class DeterministicUnitizer:
         records: list[CoverageRecord] = []
         offset = 0
         while offset < len(text):
-            if text[offset].isspace():
-                offset += 1
-                continue
             unit_ids = tuple(sorted(set(owners[offset])))
             problems = tuple(
                 problem
@@ -233,10 +350,10 @@ class DeterministicUnitizer:
                 and problem.start_offset <= offset < problem.end_offset
             )
             problem_ids = tuple(problem.record_id for problem in problems)
+            is_gap = text[offset].isspace() and not unit_ids and not problems
             end = offset + 1
             while (
                 end < len(text)
-                and not text[end].isspace()
                 and tuple(sorted(set(owners[end]))) == unit_ids
                 and tuple(
                     problem.record_id
@@ -246,6 +363,7 @@ class DeterministicUnitizer:
                     and problem.start_offset <= end < problem.end_offset
                 )
                 == problem_ids
+                and (text[end].isspace() and not unit_ids and not problems) == is_gap
             ):
                 end += 1
             if unit_ids:
@@ -254,6 +372,9 @@ class DeterministicUnitizer:
             elif problems:
                 status = "unsupported"
                 reason = problems[0].reason
+            elif is_gap:
+                status = "covered"
+                reason = "normalized_source_gap"
             else:
                 status = "uncovered"
                 reason = "no_valid_source_element"
@@ -288,6 +409,49 @@ class DeterministicUnitizer:
             )
             offset = end
         return tuple(records)
+
+    @staticmethod
+    def _source_ranges(
+        snapshot: SourceDocumentSnapshot,
+        text: str,
+        records: tuple[CoverageRecord, ...],
+    ) -> tuple[SourceRangeRecord, ...]:
+        ranges: list[SourceRangeRecord] = []
+        for record in records:
+            if record.scope != "source_range":
+                continue
+            assert record.start_offset is not None
+            assert record.end_offset is not None
+            exact_text = text[record.start_offset : record.end_offset]
+            kind: SourceRangeKind
+            if record.unit_ids:
+                kind = "unit"
+            elif record.status == "unsupported":
+                kind = "unsupported"
+            elif record.status == "uncovered":
+                kind = "uncovered"
+            else:
+                kind = "gap"
+            ranges.append(
+                SourceRangeRecord(
+                    range_id=stable_id(
+                        "source_range",
+                        snapshot.snapshot_id,
+                        str(record.start_offset),
+                        str(record.end_offset),
+                        kind,
+                    ),
+                    snapshot_id=snapshot.snapshot_id,
+                    schema_version="source-range.v1",
+                    start_offset=record.start_offset,
+                    end_offset=record.end_offset,
+                    kind=kind,
+                    content_hash=_text_hash(exact_text),
+                    unit_ids=record.unit_ids,
+                    reason=(record.reason if kind in {"unsupported", "uncovered"} else None),
+                )
+            )
+        return tuple(ranges)
 
     @staticmethod
     def _structure_coverage(
@@ -341,8 +505,7 @@ class DeterministicUnitizer:
         transformations = tuple(
             finding.split(":", 1)[1].strip()
             for finding in snapshot.parse_findings
-            if finding.lower().startswith(("normalization:", "normalized:"))
-            and ":" in finding
+            if finding.lower().startswith(("normalization:", "normalized:")) and ":" in finding
         )
         payload = {
             "snapshot_id": snapshot.snapshot_id,
@@ -361,18 +524,67 @@ class DeterministicUnitizer:
             content_digest=_digest(payload),
         )
 
+    @staticmethod
+    def _coverage_manifest(
+        snapshot: SourceDocumentSnapshot,
+        text: str,
+        range_records: tuple[CoverageRecord, ...],
+        element_records: tuple[CoverageRecord, ...],
+        structure_records: tuple[CoverageRecord, ...],
+        capability_records: tuple[CoverageRecord, ...],
+    ) -> SourcePlaneCoverageManifest:
+        payload = {
+            "schema_version": "source-plane-coverage.v1",
+            "snapshot_id": snapshot.snapshot_id,
+            "source_length": len(text),
+            "range_coverage": [_coverage_value(item) for item in range_records],
+            "element_coverage": [_coverage_value(item) for item in element_records],
+            "structure_coverage": [_coverage_value(item) for item in structure_records],
+            "capability_coverage": [_coverage_value(item) for item in capability_records],
+        }
+        return SourcePlaneCoverageManifest(
+            schema_version="source-plane-coverage.v1",
+            snapshot_id=snapshot.snapshot_id,
+            source_length=len(text),
+            range_coverage=range_records,
+            element_coverage=element_records,
+            structure_coverage=structure_records,
+            capability_coverage=capability_records,
+            content_digest=_digest(payload),
+        )
+
 
 def unitize_snapshot(
     snapshot: SourceDocumentSnapshot,
     normalized_text: str,
 ) -> UnitizationResult:
-    """Convenience entry point for the deterministic v1 unitizer."""
+    """Convenience entry point for the deterministic Source Plane unitizer."""
 
     return DeterministicUnitizer().unitize(snapshot, normalized_text)
 
 
 def _text_hash(text: str) -> str:
     return f"sha256:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
+
+
+def _structural_path(
+    element_id: str | None,
+    section_id: str,
+    element_by_id: dict[str, SourceElement],
+) -> tuple[str, ...]:
+    if element_id is None or element_id not in element_by_id:
+        return (section_id,)
+    path: list[str] = []
+    visited: set[str] = set()
+    current_id: str | None = element_id
+    while current_id is not None and current_id in element_by_id:
+        if current_id in visited:
+            break
+        visited.add(current_id)
+        path.append(current_id)
+        current_id = element_by_id[current_id].parent_element_id
+    path.reverse()
+    return (*path, section_id)
 
 
 def _digest(value: object) -> str:
@@ -421,6 +633,20 @@ def _unit_value(unit: AnchoredTextUnit) -> object:
         "parent_unit_id": unit.parent_unit_id,
         "previous_unit_id": unit.previous_unit_id,
         "next_unit_id": unit.next_unit_id,
+    }
+
+
+def _source_range_value(source_range: SourceRangeRecord) -> object:
+    return {
+        "range_id": source_range.range_id,
+        "snapshot_id": source_range.snapshot_id,
+        "schema_version": source_range.schema_version,
+        "start_offset": source_range.start_offset,
+        "end_offset": source_range.end_offset,
+        "kind": source_range.kind,
+        "content_hash": source_range.content_hash,
+        "unit_ids": source_range.unit_ids,
+        "reason": source_range.reason,
     }
 
 

@@ -160,12 +160,31 @@ $env:READWELT_API_BASE_URL = "https://api.example.com/v1"
 uv run readwelt read .\article.txt --provider api --json
 ```
 
+直接复用 Claude Code 宿主当前配置的认证和模型，不需要给 Readwelt 配置 API key：
+
+```powershell
+uv run readwelt read .\article.md `
+  --provider claude-code `
+  --purpose "恢复论证、补全理解缺口、检验边界并提炼可迁移原则" `
+  --token-budget 1024 `
+  --project .readwelt-claude `
+  --json
+```
+
+Readwelt 优先定位 Anthropic 官方安装包中的 `claude.exe`，不会盲目执行 PATH 中的
+同名 `.cmd` wrapper。认证和模型路由只从 Claude Code 用户 settings 注入宿主子进程，
+不会写入 Readwelt 的 manifest、artifact 或日志。默认使用 `--bare`，关闭工具、MCP、
+hooks、自动记忆和会话持久化；每个阶段保存宿主版本、实际模型、session id、token
+usage、估算 cost 和退出码。可以用 `READWELT_CLAUDE_CODE_BIN`、
+`READWELT_CLAUDE_SETTINGS_PATH`、`READWELT_CLAUDE_CODE_MODEL` 和
+`READWELT_CLAUDE_CODE_TIMEOUT_SECONDS` 显式覆盖宿主配置。
+
 Xberg `1.0.0rc38` 负责正文抽取；源文件不会被原地修改。对于 EPUB，Readwelt 还会
 读取容器内的 NCX 导航树，将 Xberg 的扁平段落恢复到真实章/节标题之下。解析策略
 版本进入 snapshot identity，因此结构修复会生成新 snapshot，不会被同正文 digest
 的旧缓存静默覆盖。所有运行状态默认保存在项目相对目录。
 
-## 挂载到 Claude Code / Codex
+## Agent 接管与 MCP 挂载
 
 启动 stdio MCP server：
 
@@ -211,33 +230,62 @@ uv run readwelt agent-start .\article.txt --json
 运行会在当前阶段等待，且可以由另一 Agent 宿主恢复。MCP、HTTP 与 CLI 的完整挂载
 契约见 [Host-neutral Agent integration](docs/architecture/agent-integration.md)。
 文章中间表示的当前实现与能力边界见
-[ArticleGraph Foundation](docs/architecture/article-graph.md)。
+[ArticleGraph Foundation](docs/architecture/article-graph.md) 和
+[Source Plane 架构](docs/architecture/articlegraph-source-plane-baseline.md)。
 
 ## 为什么仍然需要确定性内核
 
 生成模型擅长恢复问题意识、隐含前提、作者模型和思想迁移，但不应该反复消耗 token
 处理哈希、重复检测、锚点覆盖和词法召回。
 
-Readwelt 先构建 ArticleGraph 底稿，`SemanticAtlas` 只保留为定位器：
+Readwelt 先保存原始输入并构建可寻址的 Source Plane，再生成 ArticleGraph 定位底稿；
+`SemanticAtlas` 只保留为定位器：
 
 ```text
-Xberg 结构化输入
+原始文件制品 · source_document root
         ↓
-AnchoredTextUnit · exact source coverage
+Xberg 正文抽取 · normalized text
         ↓
-Linguistic / SemanticExtraction backends
+Source Plane · AnchoredTextUnit · unit/gap ranges · source elements
         ↓
-raw GraphExtraction · Canonicalizer
+Linguistic / SemanticExtraction · raw GraphExtraction · Canonicalizer
         ↓
-ArticleGraph · ProvenanceLedger · SourceIndex
+advisory ArticleGraph locating signals
         ↓
-budgeted StageView
+SourceIndex · ProvenanceLedger · typed source closure
         ↓
-六阶段读懂 · 解压 · 重建 · 批判 · 迁移
+bounded/paged StageView provider envelope
+        ↓
+六阶段 AI 读懂 · 解压 · 重建 · 边界检验 · 迁移
 ```
 
-这层计算不生成最终理解。它保留原始候选、能力缺口、合并决策、冲突和双向来源索引，
-让六阶段读取不同的最小图切片，并能从每个知识对象回到原文。
+这层计算不生成最终理解。它保留原始字节、精确范围、原始候选、能力缺口、合并决策、
+冲突和双向来源索引，让六阶段在硬序列化预算内分页读取，并能从 Provider 实际看到的
+材料回到 Source Plane。ArticleGraph 对象只是机器定位候选；阶段结论可以引用它们，
+但不能回写成 source fact。
+
+原始扫描 PDF 即使没有 OCR 文本也会保留为可寻址 source root；这不等于已经恢复文字、
+版面或页几何。Xberg 当前实测以正文抽取为主，未暴露所需结构。可选
+`docling==2.114.0` 结构后端只在 PDF 无结构或空文本时触发；它不会替换正常的
+TXT/HTML/Xberg 路径，也不会替换原始 PDF source root。CompletionPlan、外部研究闭环
+和 Completion Engine 尚未在本 change 实现。
+
+Docling 需要显式安装 `structural` extra，并使用官方工具预下载本地模型；Readwelt
+不会静默下载模型：
+
+```powershell
+uv sync --extra structural
+$env:HF_HUB_DISABLE_PROGRESS_BARS = "1"
+.\.venv\Scripts\docling-tools.exe models download layout tableformer rapidocr `
+  -o .research-inputs\docling-artifacts --quiet
+$env:READWELT_DOCLING_ARTIFACTS_PATH = (
+  Resolve-Path ".research-inputs\docling-artifacts"
+).Path
+```
+
+模型下载是显式的准备步骤；阅读运行时不会联网补模型。没有该目录、依赖、RapidOCR
+引擎或正确版本时，fallback 会记录明确的 capability failure，
+继续保留 Xberg 结果和原始 source root。
 
 默认安装不下载 NLP 或 dense 模型，使用确定性 linguistic/semantic 降级 backend。
 BM25+/coverage 仍可帮助 StageView 定位原文；dense 是可选 locator，不是

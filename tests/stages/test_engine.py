@@ -6,6 +6,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from readwelt.domain import (
     DocumentSection,
     EpistemicStatus,
@@ -14,9 +16,21 @@ from readwelt.domain import (
     ReadingStage,
     SourceDocumentSnapshot,
     SpanAnchor,
+    StageArtifact,
 )
 from readwelt.providers import ProviderKind, StageCandidate, StageRequest
-from readwelt.stages import SixStageReadingEngine
+from readwelt.stage_views import (
+    StageView,
+    StageViewBlockingRecord,
+    StageViewContinuationCursor,
+    StageViewCoverageManifest,
+    StageViewExternalEvidence,
+    TraversalPosition,
+)
+from readwelt.stages import SixStageReadingEngine, StageInputIncomplete
+from readwelt.stages.candidate_settlement import bind_stage_input
+from readwelt.stages.policies import RESPONSE_SCHEMA
+from readwelt.stages.request_factory import build_stage_request
 
 
 class FakeCandidateProvider:
@@ -99,6 +113,13 @@ class FakeCandidateProvider:
         )
 
 
+def test_response_schema_requires_structured_gap_entries() -> None:
+    gaps = RESPONSE_SCHEMA["properties"]["gaps"]
+
+    assert gaps["items"]["type"] == "object"
+    assert set(gaps["items"]["required"]) == {"kind", "description"}
+
+
 def _snapshot_and_packet() -> tuple[SourceDocumentSnapshot, EvidencePacket, SpanAnchor]:
     text = "A claim supported by the article."
     anchor = SpanAnchor.create(
@@ -153,8 +174,14 @@ def test_executes_fixed_order_and_enforces_evidence_boundaries() -> None:
         assert request.capabilities == ()
         assert request.evidence_packet["external_evidence_allowed"] is False
         assert request.evidence_packet["external_evidence"] == []
-    assert provider.requests[2].evidence_packet["external_evidence"] == [
-        "external biography must not enter early stages"
+    assert provider.requests[2].evidence_packet["external_evidence"] == []
+    assert provider.requests[2].evidence_packet["external_evidence_omissions"] == [
+        {
+            "schema_version": "stage-view-external-evidence-omission.v1",
+            "evidence_id": packet.external_evidence[0].evidence_id,
+            "reason": "not_admitted_by_stage_view",
+            "detail": "EvidencePacket material cannot bypass StageView admission",
+        }
     ]
     stage6_inputs = provider.requests[-1].evidence_packet["upstream_claims"]
     assert {item["stage"] for item in stage6_inputs} == {ReadingStage.BOUNDARIES.value}
@@ -326,3 +353,221 @@ def test_resume_uses_frozen_stage_prefix_without_recalling_provider() -> None:
         ReadingStage.BOUNDARIES.value,
         ReadingStage.TRANSFER.value,
     ]
+
+
+def test_candidate_with_continuation_is_persisted_as_provisional_not_settled() -> None:
+    snapshot, packet, anchor = _snapshot_and_packet()
+    provider = FakeCandidateProvider(anchor.anchor_id)
+    cursor = StageViewContinuationCursor.create(
+        snapshot_id=snapshot.snapshot_id,
+        source_plane_schema_version="article-source-plane.v1",
+        stage=ReadingStage.MAINLINE,
+        policy_digest="sha256:" + "1" * 64,
+        index_digest="sha256:" + "2" * 64,
+        frontier=(TraversalPosition("unit:next"),),
+        visited_unit_ids=("unit:first",),
+    )
+    view = _minimal_view(ReadingStage.MAINLINE, continuation=cursor)
+    persisted: list[Any] = []
+
+    async def sink(artifact: Any) -> None:
+        persisted.append(artifact)
+
+    with pytest.raises(StageInputIncomplete) as raised:
+        asyncio.run(
+            SixStageReadingEngine(provider).run(
+                snapshot,
+                packet,
+                artifact_sink=sink,
+                stage_view_factory=lambda _stage, _artifacts: view,
+            )
+        )
+
+    artifact = raised.value.artifact
+    assert persisted == [artifact]
+    assert artifact.input_state is not None
+    assert artifact.input_state.status.value == "provisional"
+    assert artifact.input_state.continuation_digest == cursor.content_digest
+    assert not artifact.fully_settled
+    assert artifact.accepted_claims == ()
+    complete = bind_stage_input(
+        replace(artifact, input_state=None),
+        _minimal_view(ReadingStage.MAINLINE),
+    )
+    assert complete.input_state is not None
+    assert complete.input_state.status.value == "complete"
+    assert complete.fully_settled
+
+    blocked_view = replace(
+        _minimal_view(ReadingStage.MAINLINE),
+        blocking_records=(
+            StageViewBlockingRecord(
+                source_unit_id="unit:blocked",
+                reason="oversized_unit_requires_split",
+                estimated_tokens=256,
+                budget=128,
+            ),
+        ),
+    )
+    blocked = bind_stage_input(replace(artifact, input_state=None), blocked_view)
+    assert blocked.input_state is not None
+    assert blocked.input_state.status.value == "blocked"
+    assert not blocked.fully_settled
+
+
+def test_critical_range_and_element_participate_in_stage_settlement() -> None:
+    artifact = bind_stage_input(
+        StageArtifact(
+            artifact_id="artifact-critical-source",
+            run_id="run-1",
+            stage=ReadingStage.MAINLINE,
+            claims=(),
+            gaps=(),
+            warnings=(),
+            input_artifact_ids=(),
+            provider="test",
+            model="test-v1",
+            status=EpistemicStatus.UNDERDETERMINED,
+            content_digest="sha256:" + "9" * 64,
+        ),
+        replace(
+            _minimal_view(ReadingStage.MAINLINE),
+            coverage=StageViewCoverageManifest(
+                schema_version="stage-view-coverage.v2",
+                source_unit_ids=(),
+                visited_unit_ids=(),
+                selected_unit_ids=(),
+                serialized_identities=(),
+                presented_identities=(),
+                cited_unit_ids=(),
+                critical_unit_ids=(),
+                omitted=(),
+                source_complete=True,
+                stage_input_complete=False,
+                critical_range_ids=("range-critical",),
+                critical_element_ids=("element-critical",),
+                source_range_ids=("range-critical",),
+                source_element_ids=("element-critical",),
+            ),
+        ),
+    )
+
+    assert artifact.input_state is not None
+    assert artifact.input_state.status.value == "blocked"
+    assert artifact.input_state.unresolved_critical_ids == (
+        "range:range-critical",
+        "element:element-critical",
+    )
+
+    complete_coverage = replace(
+        _minimal_view(ReadingStage.MAINLINE).coverage
+        or StageViewCoverageManifest(
+            schema_version="stage-view-coverage.v2",
+            source_unit_ids=(),
+            visited_unit_ids=(),
+            selected_unit_ids=(),
+            serialized_identities=(),
+            presented_identities=(),
+            cited_unit_ids=(),
+            critical_unit_ids=(),
+            omitted=(),
+            source_complete=True,
+            stage_input_complete=False,
+        ),
+        stage_input_complete=True,
+        critical_range_ids=("range-critical",),
+        critical_element_ids=("element-critical",),
+        source_range_ids=("range-critical",),
+        source_element_ids=("element-critical",),
+        presented_range_ids=("range-critical",),
+        presented_element_ids=("element-critical",),
+        completed_range_ids=("range-critical",),
+        completed_element_ids=("element-critical",),
+    )
+    complete = bind_stage_input(
+        replace(artifact, input_state=None),
+        replace(
+            _minimal_view(ReadingStage.MAINLINE),
+            coverage=complete_coverage,
+        ),
+    )
+
+    assert complete.input_state is not None
+    assert complete.input_state.status.value == "complete"
+    assert complete.input_state.unresolved_critical_ids == ()
+
+
+def _minimal_view(
+    stage: ReadingStage,
+    *,
+    continuation: StageViewContinuationCursor | None = None,
+) -> StageView:
+    digest = "sha256:" + "3" * 64
+    return StageView(
+        schema_version="stage-view.v1",
+        snapshot_id="snapshot-1",
+        stage=stage,
+        task_intent="test bounded stage input",
+        nodes=(),
+        edges=(),
+        text_units=(),
+        upstream_claims=(),
+        unresolved_conflict_ids=(),
+        missing_capabilities=(),
+        capability_outcomes=(),
+        coverage_complete=continuation is None,
+        token_budget=128,
+        estimated_tokens=0,
+        selection_reasons=(),
+        locator_backend=None,
+        fallback_backend=None,
+        graph_digest=digest,
+        source_index_digest=digest,
+        provenance_ledger_digest=digest,
+        content_digest=digest,
+        continuation=continuation,
+    )
+
+
+def test_external_evidence_enters_request_only_by_typed_stage_view_admission() -> None:
+    snapshot, packet, _anchor = _snapshot_and_packet()
+    evidence = packet.external_evidence[0]
+    admitted = StageViewExternalEvidence(
+        evidence_id=evidence.evidence_id,
+        content=evidence.content,
+        selection_reason="required_background_for_decompression",
+        provenance=evidence.provenance,
+        stage_policy=ReadingStage.DECOMPRESSION.value,
+    )
+    view = replace(
+        _minimal_view(ReadingStage.DECOMPRESSION),
+        external_evidence=(admitted,),
+    )
+
+    request = build_stage_request(
+        provider_name="test",
+        stage=ReadingStage.DECOMPRESSION,
+        snapshot=snapshot,
+        evidence=packet,
+        artifacts=(),
+        upstream_claims=(),
+        stage_view=view,
+    )
+
+    assert request.evidence_packet["external_evidence"] == [
+        {
+            "schema_version": "stage-view-external-evidence.v1",
+            "evidence_id": evidence.evidence_id,
+            "stage_view_digest": view.content_digest,
+        }
+    ]
+    stage_view = request.evidence_packet["stage_view"]
+    assert stage_view["external_evidence"][0] == {
+        "schema_version": "stage-view-external-evidence.v1",
+        "evidence_id": evidence.evidence_id,
+        "content": evidence.content,
+        "selection_reason": "required_background_for_decompression",
+        "provenance": [["origin", "legacy_evidence_packet"]],
+        "stage_policy": ReadingStage.DECOMPRESSION.value,
+    }
+    assert request.evidence_packet["external_evidence_omissions"] == []

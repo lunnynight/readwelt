@@ -17,17 +17,11 @@ def test_openapi_exposes_agent_request_fields_and_object_response(tmp_path) -> N
 
     document = client.get("/openapi.json").json()
     operation = document["paths"]["/v1/agent-sessions"]["post"]
-    request_schema = operation["requestBody"]["content"]["application/json"][
-        "schema"
-    ]
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
     agent_schema = document["components"]["schemas"]["StartAgentSessionPayload"]
-    response_schema = operation["responses"]["202"]["content"]["application/json"][
-        "schema"
-    ]
+    response_schema = operation["responses"]["202"]["content"]["application/json"]["schema"]
 
-    assert request_schema == {
-        "$ref": "#/components/schemas/StartAgentSessionPayload"
-    }
+    assert request_schema == {"$ref": "#/components/schemas/StartAgentSessionPayload"}
     assert agent_schema["required"] == ["source_or_document_id"]
     assert set(agent_schema["properties"]) == {
         "source_or_document_id",

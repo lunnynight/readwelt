@@ -34,6 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     read_parser = subparsers.add_parser("read", help="Import and execute the reading pipeline")
     read_parser.add_argument("source", help="A file, URL, or existing document id")
+    read_parser.add_argument("--purpose", default="完整逆向阅读")
+    read_parser.add_argument("--token-budget", type=int)
+    read_parser.add_argument("--idempotency-key")
     _add_common_options(read_parser)
     _add_provider_options(read_parser)
 
@@ -102,7 +105,8 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_provider_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--provider", choices=("local", "api", "agent"))
+    provider_choices = ("local", "api", "agent", "claude-code")
+    parser.add_argument("--provider", choices=provider_choices)
     parser.add_argument(
         "--provider-mode",
         choices=("primary", "compare", "fallback", "agent_takeover"),
@@ -112,7 +116,7 @@ def _add_provider_options(parser: argparse.ArgumentParser) -> None:
         "--candidate-provider",
         action="append",
         default=[],
-        choices=("local", "api", "agent"),
+        choices=provider_choices,
         help="Additional provider for compare/fallback mode; repeatable",
     )
 
@@ -157,7 +161,14 @@ async def execute(args: argparse.Namespace, service: object) -> Any:
             primary=args.provider,
             candidates=args.candidate_provider,
         )
-        return await invoke_read(service, args.source, selection)
+        return await invoke_read(
+            service,
+            args.source,
+            selection,
+            purpose=args.purpose,
+            token_budget=args.token_budget,
+            idempotency_key=args.idempotency_key,
+        )
     raise AssertionError(f"unsupported command: {args.command}")
 
 
@@ -175,7 +186,10 @@ def main(
 
     try:
         project_root = resolve_project_root(args.project)
-        active_service = service or load_application_service(project_root)
+        active_service = service or load_application_service(
+            project_root,
+            requested_provider=getattr(args, "provider", None),
+        )
         result = asyncio.run(execute(args, active_service))
         if not args.quiet:
             projected = to_jsonable(result)

@@ -236,9 +236,7 @@ def create_app(
             return await agent.start(
                 source,
                 purpose=str(payload.get("purpose", "完整逆向阅读")),
-                token_budget=(
-                    int(raw_token_budget) if raw_token_budget is not None else None
-                ),
+                token_budget=(int(raw_token_budget) if raw_token_budget is not None else None),
                 idempotency_key=(
                     str(payload["idempotency_key"])
                     if payload.get("idempotency_key") is not None
@@ -270,9 +268,7 @@ def create_app(
                 run_id,
                 candidate,
                 agent_name=str(payload.get("agent_name", "")),
-                model=(
-                    str(payload["model"]) if payload.get("model") is not None else None
-                ),
+                model=(str(payload["model"]) if payload.get("model") is not None else None),
                 agent_provenance=(
                     payload["agent_provenance"]
                     if isinstance(payload.get("agent_provenance"), dict)

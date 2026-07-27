@@ -63,6 +63,12 @@ def test_openai_compatible_calls_custom_base_url_and_records_usage() -> None:
             assert result.model == "model-a"
             assert result.provenance["token_usage"]["total_tokens"] == 14
             assert result.provenance["response_id"] == "chat-1"
+            assert result.provenance["provider_input_budget"]["profile"] == (
+                "openai_chat_completions.v1"
+            )
+            assert result.provenance["provider_input_budget"]["mode"] == (
+                "conservative_upper_bound"
+            )
 
     asyncio.run(scenario())
 

@@ -24,9 +24,7 @@ class MissingRunService:
     ),
 )
 def test_missing_run_routes_return_structured_404(tmp_path, path: str) -> None:
-    client = testclient.TestClient(
-        create_app(MissingRunService(), project_root=tmp_path)
-    )
+    client = testclient.TestClient(create_app(MissingRunService(), project_root=tmp_path))
 
     response = client.get(path)
 

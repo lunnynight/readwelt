@@ -7,6 +7,7 @@ from typing import Any
 
 from ._audit import conflict, decision
 from ._normalization import identity_key
+from .confidence import confidence_lineage, decision_confidence
 from .digest import stable_identifier
 from .models import (
     CanonicalizationPhase,
@@ -44,7 +45,7 @@ def assemble_claims(
                 (candidate["candidate_id"],),
                 (),
                 ("claim_text_missing",),
-                candidate["source_unit_ids"],
+                (*candidate["source_unit_ids"], *candidate["source_element_ids"]),
                 policy,
                 1.0,
             )
@@ -66,13 +67,21 @@ def assemble_claims(
             candidate["candidate_id"],
         )
         mention = mentions[candidate["candidate_id"]]
+        score, method, sources = confidence_lineage(
+            (candidate,),
+            {candidate["candidate_id"]: mention.mention_id},
+        )
         claim = Claim(
             claim_id=claim_id,
             text=text,
             epistemic_status=EpistemicStatus.CANONICALIZED,
             mention_ids=(mention.mention_id,),
             evidence_unit_ids=candidate["source_unit_ids"],
-            confidence=candidate["confidence"],
+            evidence_element_ids=candidate["source_element_ids"],
+            confidence=score,
+            confidence_method=method,
+            confidence_sources=sources,
+            candidate_ids=(candidate["candidate_id"],),
             ambiguity=candidate["ambiguity"],
             attributes=candidate["attributes"],
         )
@@ -88,9 +97,9 @@ def assemble_claims(
                 if candidate["ambiguity"]
                 else "grounded_claim_assembled",
             ),
-            candidate["source_unit_ids"],
+            (*candidate["source_unit_ids"], *candidate["source_element_ids"]),
             policy,
-            candidate["confidence"],
+            decision_confidence((candidate,)),
         )
         decisions.append(merge_decision)
         if outcome is MergeOutcome.DEFER:

@@ -77,8 +77,9 @@ def test_deep_build_is_deterministic_for_identical_revision_and_policy() -> None
     second = builder.build(snapshot, text)
 
     assert first == second
-    assert first.schema_version == "article-graph-build.v1"
-    assert first.graph.schema_version == "article-graph.v2"
+    assert first.schema_version == "article-graph-build.v2"
+    assert first.graph.schema_version == "article-graph.v4"
+    assert first.source_index.schema_version == "source-index.v3"
     assert first.content_digest == second.content_digest
     assert first.unitization.content_digest == second.unitization.content_digest
     assert tuple(item.content_digest for item in first.extractions) == tuple(
@@ -107,9 +108,9 @@ def test_unitization_accounts_for_every_non_whitespace_source_character() -> Non
     assert coverage.source_length == len(text)
     assert coverage.has_complete_text_coverage
     assert not coverage.uncovered
-    assert {
-        offset for offset, character in enumerate(text) if not character.isspace()
-    }.issubset(covered_offsets)
+    assert {offset for offset, character in enumerate(text) if not character.isspace()}.issubset(
+        covered_offsets
+    )
     assert all(unit.revision_id == build.snapshot_id for unit in build.unitization.units)
     assert all(
         reference.exact_text == text[reference.start_offset : reference.end_offset]
@@ -158,8 +159,7 @@ def test_provenance_chain_and_source_index_close_in_both_directions() -> None:
     assert verification.head_digest == build.provenance_ledger.head_digest
     assert tuple(event.sequence for event in ledger.events) == tuple(range(len(ledger.events)))
     assert all(
-        event.previous_digest == previous.digest
-        for previous, event in pairwise(ledger.events)
+        event.previous_digest == previous.digest for previous, event in pairwise(ledger.events)
     )
     known_unit_ids = {unit.unit_id for unit in build.unitization.units}
 
@@ -197,25 +197,17 @@ def test_epistemic_status_separates_source_mentions_from_canonical_objects() -> 
         for candidate in extraction.candidate_nodes
     }
 
-    assert {
-        candidate.epistemic_status
-        for candidate in candidates.values()
-    } == {
+    assert {candidate.epistemic_status for candidate in candidates.values()} == {
         ExtractionEpistemicStatus.EXPLICIT,
         ExtractionEpistemicStatus.LINGUISTIC_INFERENCE,
     }
     assert all(
-        mention.epistemic_status.value
-        == candidates[mention.candidate_id].epistemic_status.value
+        mention.epistemic_status.value == candidates[mention.candidate_id].epistemic_status.value
         for mention in build.graph.mentions
     )
+    assert all(node.epistemic_status is EpistemicStatus.CANONICALIZED for node in build.graph.nodes)
     assert all(
-        node.epistemic_status is EpistemicStatus.CANONICALIZED
-        for node in build.graph.nodes
-    )
-    assert all(
-        claim.epistemic_status is EpistemicStatus.CANONICALIZED
-        for claim in build.graph.claims
+        claim.epistemic_status is EpistemicStatus.CANONICALIZED for claim in build.graph.claims
     )
     assert {
         EpistemicStatus.INTERNAL_DERIVED,
@@ -250,6 +242,29 @@ def test_stage_view_carries_explicit_build_lineage_and_grounded_selections() -> 
         set(node.source_unit_ids).issubset(build.source_index.units_for_node(node.node_id))
         for node in view.nodes
     )
+
+
+def test_stage_view_only_selects_units_from_admitted_evidence_anchors() -> None:
+    build = _build()
+    admitted = next(
+        reference.anchor_id
+        for unit in build.unitization.units
+        for reference in unit.source_references
+        if reference.anchor_id is not None
+    )
+
+    view = StageViewProjector().project(
+        build,
+        StageContext(
+            stage=ReadingStage.MAINLINE,
+            task_intent="extract only admitted evidence",
+            token_budget=128,
+            allowed_anchor_ids=(admitted,),
+        ),
+    )
+
+    assert view.text_units
+    assert set(view.anchor_ids) == {admitted}
 
 
 def test_build_rejects_normalized_text_that_does_not_match_the_snapshot() -> None:

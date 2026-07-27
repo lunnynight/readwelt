@@ -1,0 +1,447 @@
+{
+  "content_digest": "sha256:963cf65da2fc45f2e5ab000fe464689c84c5b3895a5fefc6db61d8e2bf146d7a",
+  "manifest": "C:\\Users\\Administrator\\orca\\projects\\readwelt\\benchmarks\\articlegraph\\xberg_probe_manifest.json",
+  "results": [
+    {
+      "content_characters": 43,
+      "findings": [
+        "structure_not_exposed"
+      ],
+      "format": "txt",
+      "geometry": [],
+      "geometry_value_count": 0,
+      "label": "plain-text-probe",
+      "mime_types": [
+        "text/plain"
+      ],
+      "native_id_count": 0,
+      "native_ids": [],
+      "nested_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "offset_field_count": 0,
+      "offsets": [],
+      "page_value_count": 0,
+      "pages": [],
+      "reading_order": [],
+      "reading_order_value_count": 0,
+      "relationship_value_count": 0,
+      "relationships": [],
+      "result_count": 1,
+      "schema_version": "xberg-capability-probe.v1",
+      "source_digest": "sha256:0b269cb60658169b6fd659096217a42592dc9f1b579283f2cb0886ec01a6fd00",
+      "source_path": "C:\\Users\\Administrator\\orca\\projects\\readwelt\\tests\\fixtures\\xberg-probe.txt",
+      "status": "ok",
+      "top_level_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "xberg_version": "1.0.0rc38"
+    },
+    {
+      "content_characters": 46,
+      "findings": [
+        "structure_not_exposed"
+      ],
+      "format": "html",
+      "geometry": [],
+      "geometry_value_count": 0,
+      "label": "html-structure-probe",
+      "mime_types": [
+        "text/html"
+      ],
+      "native_id_count": 0,
+      "native_ids": [],
+      "nested_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "offset_field_count": 0,
+      "offsets": [],
+      "page_value_count": 0,
+      "pages": [],
+      "reading_order": [],
+      "reading_order_value_count": 0,
+      "relationship_value_count": 0,
+      "relationships": [],
+      "result_count": 1,
+      "schema_version": "xberg-capability-probe.v1",
+      "source_digest": "sha256:010ec44731c31b47518f18fbb6507b80fd524956003f25b0368414c33571171c",
+      "source_path": "C:\\Users\\Administrator\\orca\\projects\\readwelt\\.research-inputs\\xberg-structure-probe.html",
+      "status": "ok",
+      "top_level_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "xberg_version": "1.0.0rc38"
+    },
+    {
+      "content_characters": 99415,
+      "findings": [
+        "structure_not_exposed"
+      ],
+      "format": "epub",
+      "geometry": [],
+      "geometry_value_count": 0,
+      "label": "epub-first-principles",
+      "mime_types": [
+        "application/epub+zip"
+      ],
+      "native_id_count": 0,
+      "native_ids": [],
+      "nested_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "offset_field_count": 0,
+      "offsets": [],
+      "page_value_count": 0,
+      "pages": [],
+      "reading_order": [],
+      "reading_order_value_count": 0,
+      "relationship_value_count": 0,
+      "relationships": [],
+      "result_count": 1,
+      "schema_version": "xberg-capability-probe.v1",
+      "source_digest": "sha256:86ae8515b2a4d9e4888f5a4c9af684f711bb50f3123ec4c1973a8cdd48c6bed4",
+      "source_path": "C:\\Users\\Administrator\\orca\\projects\\readwelt\\.readwelt\\corpora\\raw\\first-principles\\epub",
+      "status": "ok",
+      "top_level_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "xberg_version": "1.0.0rc38"
+    },
+    {
+      "content_characters": 122120,
+      "findings": [
+        "structure_not_exposed"
+      ],
+      "format": "native_pdf",
+      "geometry": [],
+      "geometry_value_count": 0,
+      "label": "native-pdf-aiwen",
+      "mime_types": [
+        "application/pdf"
+      ],
+      "native_id_count": 0,
+      "native_ids": [],
+      "nested_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "offset_field_count": 0,
+      "offsets": [],
+      "page_value_count": 0,
+      "pages": [],
+      "reading_order": [],
+      "reading_order_value_count": 0,
+      "relationship_value_count": 0,
+      "relationships": [],
+      "result_count": 1,
+      "schema_version": "xberg-capability-probe.v1",
+      "source_digest": "sha256:999d36c8ce9456fd2f25204672fd5ee1cac339a5079d5dfc3fd49a2348584329",
+      "source_path": "C:\\Users\\Administrator\\orca\\projects\\readwelt\\.research-checkouts\\kag\\tests\\unit\\builder\\data\\aiwen.pdf",
+      "status": "ok",
+      "top_level_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "xberg_version": "1.0.0rc38"
+    },
+    {
+      "content_characters": 0,
+      "findings": [
+        "content_empty",
+        "structure_not_exposed"
+      ],
+      "format": "pdf_unknown_or_image_only",
+      "geometry": [],
+      "geometry_value_count": 0,
+      "label": "pdf-empty-extraction-control",
+      "mime_types": [
+        "application/pdf"
+      ],
+      "native_id_count": 0,
+      "native_ids": [],
+      "nested_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "offset_field_count": 0,
+      "offsets": [],
+      "page_value_count": 0,
+      "pages": [],
+      "reading_order": [],
+      "reading_order_value_count": 0,
+      "relationship_value_count": 0,
+      "relationships": [],
+      "result_count": 1,
+      "schema_version": "xberg-capability-probe.v1",
+      "source_digest": "sha256:d77365d67fa8f500a5b10ea1b29767e0da8bd395d747300a4ca423c8c7d44b04",
+      "source_path": "C:\\Users\\Administrator\\orca\\projects\\readwelt\\.research-checkouts\\docling-graph\\tests\\fixtures\\sample_documents\\sample.pdf",
+      "status": "ok",
+      "top_level_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "xberg_version": "1.0.0rc38"
+    },
+    {
+      "content_characters": 0,
+      "findings": [
+        "content_empty",
+        "structure_not_exposed"
+      ],
+      "format": "scanned_pdf",
+      "geometry": [],
+      "geometry_value_count": 0,
+      "label": "scanned-pdf-required",
+      "mime_types": [
+        "application/pdf"
+      ],
+      "native_id_count": 0,
+      "native_ids": [],
+      "nested_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "offset_field_count": 0,
+      "offsets": [],
+      "page_value_count": 0,
+      "pages": [],
+      "reading_order": [],
+      "reading_order_value_count": 0,
+      "relationship_value_count": 0,
+      "relationships": [],
+      "result_count": 1,
+      "schema_version": "xberg-capability-probe.v1",
+      "source_digest": "sha256:d77365d67fa8f500a5b10ea1b29767e0da8bd395d747300a4ca423c8c7d44b04",
+      "source_path": "C:\\Users\\Administrator\\orca\\projects\\readwelt\\.research-checkouts\\docling-graph\\tests\\fixtures\\sample_documents\\sample.pdf",
+      "status": "ok",
+      "top_level_collections": [
+        [
+          "chunks",
+          0
+        ],
+        [
+          "elements",
+          0
+        ],
+        [
+          "nodes",
+          0
+        ],
+        [
+          "pages",
+          0
+        ],
+        [
+          "relationships",
+          0
+        ]
+      ],
+      "xberg_version": "1.0.0rc38"
+    }
+  ],
+  "schema_version": "xberg-capability-probe.v1"
+}

@@ -11,6 +11,7 @@ import pytest
 from readwelt.application import ReadweltApplicationService
 from readwelt.domain import ExecutionStatus, ReadingStage
 from readwelt.providers import (
+    ProviderContractError,
     ProviderKind,
     ProviderSelection,
     ProviderUnavailableError,
@@ -45,7 +46,8 @@ class PipelineProvider:
         self.requests.append(request)
         assert response_schema["type"] == "object"
         stage = ReadingStage(request.stage)
-        anchors = request.evidence_packet["anchors"]
+        anchors_value = request.evidence_packet["anchors"]
+        anchors = anchors_value["items"] if isinstance(anchors_value, Mapping) else anchors_value
         claims: list[dict[str, Any]] = [
             {
                 "claim_id": f"{stage.value}:claim:{index}",
@@ -61,7 +63,10 @@ class PipelineProvider:
             for index in range(2 if stage is ReadingStage.AUTHOR_MODEL else 1)
         ]
         if stage not in (ReadingStage.MAINLINE, ReadingStage.STRUCTURE):
-            upstream = request.evidence_packet["upstream_claims"]
+            upstream_value = request.evidence_packet["upstream_claims"]
+            upstream = (
+                upstream_value["items"] if isinstance(upstream_value, Mapping) else upstream_value
+            )
             for claim in claims:
                 claim["source_claim_ids"] = [upstream[0]["claim_id"]]
         return StageCandidate(
@@ -161,6 +166,41 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
     assert sum(artifact.artifact_type == "graph_extraction" for artifact in run.artifacts) == 2
     assert sum(artifact.artifact_type == "stage_view" for artifact in run.artifacts) == 6
     assert sum(artifact.artifact_type == "stage_artifact" for artifact in run.artifacts) == 6
+    graph_build_ref = next(
+        artifact for artifact in run.artifacts if artifact.artifact_type == "article_graph_build"
+    )
+    graph_build_payload = json.loads(
+        (service.root / graph_build_ref.path).read_text(encoding="utf-8")
+    )
+    assert graph_build_payload["schema_version"] == "article-graph-build-artifact.v2"
+    assert graph_build_payload["build_schema_version"] == "article-graph-build.v2"
+    assert "graph" not in graph_build_payload
+    assert "unitization" not in graph_build_payload
+    assert "extractions" not in graph_build_payload
+    assert {reference["role"] for reference in graph_build_payload["references"]} == {
+        "unitization",
+        "extraction:readwelt.linguistic.regex",
+        "extraction:readwelt.semantic.explicit-unit",
+        "merge_report",
+        "provenance_ledger",
+        "source_index",
+        "graph",
+    }
+    child_graph_artifacts_size = sum(
+        artifact.size
+        for artifact in run.artifacts
+        if artifact.artifact_type
+        in {
+            "anchored_text_unitization",
+            "graph_extraction",
+            "article_graph_merge_report",
+            "article_graph_provenance_ledger",
+            "article_graph_source_index",
+            "article_graph",
+        }
+    )
+    assert graph_build_ref.size < 8_000
+    assert graph_build_ref.size < child_graph_artifacts_size // 4
     assert all("stage_view" in request.evidence_packet for request in provider.requests)
     assert all(
         request.evidence_packet["stage_view"]["stage"] == request.stage
@@ -254,6 +294,172 @@ def test_agent_takeover_pauses_and_replays_submitted_candidates(tmp_path: Path) 
     assert run.current_task == "completed"
 
 
+def test_stage_page_resume_persists_frontier_across_application_hosts(
+    tmp_path: Path,
+) -> None:
+    hard_budget = 20_000
+    source = tmp_path / "long-article.txt"
+    source.write_text(
+        "\n\n".join(
+            f"Paragraph {index:02d} contains source-grounded evidence for paging."
+            for index in range(43)
+        ),
+        encoding="utf-8",
+    )
+    service = ReadweltApplicationService(
+        base_directory=tmp_path,
+        ingestion_backend="plain_text",
+        candidate_providers=(),
+    )
+    run = service.read(
+        source,
+        provider_selection=ProviderSelection.build(mode="agent_takeover"),
+        token_budget=hard_budget,
+        idempotency_key="stage-page-resume",
+    )
+    stage = ReadingStage.MAINLINE
+    first = service.pull_stage_request(run.run_id, stage.value)
+    first_view = first.evidence_packet["stage_view"]
+    first_ordinals = [item["ordinal"] for item in first_view["text_units"]]
+
+    reopened = ReadweltApplicationService(
+        base_directory=tmp_path,
+        ingestion_backend="plain_text",
+        candidate_providers=(),
+    )
+    resumed = reopened.resume_stage_page(
+        run.run_id,
+        stage,
+        targeted_anchor_ids=(),
+        rescue_level="section",
+    )
+    assert resumed.execution_status is ExecutionStatus.PENDING
+    second = reopened.pull_stage_request(run.run_id, stage.value)
+    second_view = second.evidence_packet["stage_view"]
+    second_ordinals = [item["ordinal"] for item in second_view["text_units"]]
+
+    assert first.provenance["stage_page_index"] == 0
+    assert second.provenance["stage_page_index"] == 1
+    assert second.provenance["previous_request_digest"] == first.provenance["request_digest"]
+    assert (
+        second.provenance["input_continuation_digest"]
+        == first.provenance["next_continuation_digest"]
+    )
+    assert first_ordinals
+    assert second_ordinals
+    assert min(second_ordinals) >= max(first_ordinals)
+    assert second.estimated_serialized_tokens <= hard_budget
+    assert second.budget_manifest["provider_input"]["max_tokens"] <= hard_budget
+
+    manifest = json.loads(
+        (reopened.root / "runs" / run.run_id / "manifest.json").read_text(encoding="utf-8")
+    )
+    navigation = manifest["stage_navigation"][stage.value]
+    assert navigation["page_index"] == 1
+    assert navigation["next_continuation"] is not None
+    assert navigation["stage_view_token_budget"] == second_view["token_budget"]
+    assert (
+        navigation["stage_view_hard_serialized_token_budget"]
+        == (second_view["hard_serialized_token_budget"])
+    )
+    assert second_view["token_budget"] == first_view["token_budget"]
+    assert (
+        second_view["hard_serialized_token_budget"] == (first_view["hard_serialized_token_budget"])
+    )
+    assert (reopened.root / "runs" / run.run_id / "agent" / stage.value / "pages").is_dir()
+
+    target_anchor_id = first.evidence_packet["anchors"]["items"][0]["anchor_id"]
+    third_host = ReadweltApplicationService(
+        base_directory=tmp_path,
+        ingestion_backend="plain_text",
+        candidate_providers=(),
+    )
+    targeted = third_host.resume_stage_page(
+        run.run_id,
+        stage,
+        targeted_anchor_ids=(target_anchor_id,),
+        rescue_level="targeted",
+    )
+    assert targeted.execution_status is ExecutionStatus.PENDING
+    third = third_host.pull_stage_request(run.run_id, stage.value)
+    assert third.provenance["stage_page_index"] == 2
+    assert third.provenance["previous_request_digest"] == second.provenance["request_digest"]
+    assert third.provenance["input_continuation_digest"] is None
+    assert third.provenance["rescue_level"] == "targeted"
+    assert third.provenance["targeted_anchor_ids"] == [target_anchor_id]
+
+
+def test_small_unprovable_budget_leaves_no_mailbox_request(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "bounded-article.txt"
+    source.write_text("Evidence paragraph.", encoding="utf-8")
+    service = ReadweltApplicationService(
+        base_directory=tmp_path,
+        ingestion_backend="plain_text",
+        candidate_providers=(),
+    )
+
+    run = service.read(
+        source,
+        provider_selection=ProviderSelection.build(mode="agent_takeover"),
+        token_budget=1_000,
+        idempotency_key="small-provider-envelope",
+    )
+
+    assert run.execution_status is ExecutionStatus.FAILED
+    assert any("budget" in warning.lower() for warning in run.warnings)
+    with pytest.raises(ProviderContractError, match="no external-agent request"):
+        service.pull_stage_request(run.run_id, ReadingStage.MAINLINE.value)
+
+
+def test_chinese_stage_view_request_and_provider_share_hard_counter(
+    tmp_path: Path,
+) -> None:
+    hard_budget = 20_000
+    source = tmp_path / "chinese-article.txt"
+    source.write_text(
+        "\n\n".join(
+            (
+                "第一段提出文章试图解决的问题。",
+                "第二段给出支持主张的事实与推理。",
+                "第三段说明结论成立所依赖的条件。",
+            )
+        ),
+        encoding="utf-8",
+    )
+    provider = PipelineProvider()
+    service = ReadweltApplicationService(
+        base_directory=tmp_path,
+        ingestion_backend="plain_text",
+        candidate_providers=(provider,),
+    )
+
+    run = service.read(
+        source,
+        provider_selection=ProviderSelection.build(primary="local"),
+        token_budget=hard_budget,
+        idempotency_key="chinese-hard-provider-envelope",
+    )
+
+    assert run.execution_status is ExecutionStatus.COMPLETED
+    assert len(provider.requests) == len(ReadingStage)
+    for request in provider.requests:
+        assert request.estimated_serialized_tokens is not None
+        assert request.estimated_serialized_tokens <= hard_budget
+        provider_input = request.budget_manifest["provider_input"]
+        assert provider_input["max_tokens"] <= hard_budget
+        assert provider_input["receipts"][0]["counter_id"] == (
+            "readwelt.utf8_bytes.max_1_token_per_byte.v1"
+        )
+        stage_view = request.evidence_packet["stage_view"]
+        assert (
+            stage_view["estimated_serialized_tokens"]
+            <= (stage_view["hard_serialized_token_budget"])
+        )
+        assert stage_view["token_counter"]["mode"] == ("conservative_upper_bound")
+
+
 def test_host_neutral_agent_turns_complete_without_an_internal_provider(
     tmp_path: Path,
 ) -> None:
@@ -288,8 +494,7 @@ def test_host_neutral_agent_turns_complete_without_an_internal_provider(
                         {
                             "source_claim_ids": [upstream[0]["claim_id"]],
                         }
-                        if expected_stage
-                        not in (ReadingStage.MAINLINE, ReadingStage.STRUCTURE)
+                        if expected_stage not in (ReadingStage.MAINLINE, ReadingStage.STRUCTURE)
                         else {}
                     ),
                     **(
@@ -298,9 +503,7 @@ def test_host_neutral_agent_turns_complete_without_an_internal_provider(
                         else {}
                     ),
                 }
-                for index in range(
-                    2 if expected_stage is ReadingStage.AUTHOR_MODEL else 1
-                )
+                for index in range(2 if expected_stage is ReadingStage.AUTHOR_MODEL else 1)
             ]
             turn = await agent.advance(
                 turn["run_id"],
@@ -345,9 +548,7 @@ def test_host_neutral_agent_can_retry_a_rejected_candidate(tmp_path: Path) -> No
                     {
                         "claim_id": "retry:claim:1",
                         "text": "文章提出一个主张。",
-                        "anchor_ids": [
-                            request["evidence_packet"]["anchors"][0]["anchor_id"]
-                        ],
+                        "anchor_ids": [request["evidence_packet"]["anchors"][0]["anchor_id"]],
                         "decision": "accepted",
                     }
                 ],

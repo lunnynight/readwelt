@@ -1,0 +1,50 @@
+[constraints]
+max_cycles = 0
+max_cc = 25
+no_god_files = true
+pollution_exclusions = [".venv", "target", ".understand-anything"]
+
+[[layers]]
+name = "domain"
+paths = ["src/readwelt/domain/*"]
+order = 0
+
+[[layers]]
+name = "engine"
+paths = [
+  "src/readwelt/storage/*",
+  "src/readwelt/runner/*",
+  "src/readwelt/stages/*",
+  "src/readwelt/providers/*",
+  "src/readwelt/projections/*",
+]
+order = 1
+
+[[layers]]
+name = "application"
+paths = ["src/readwelt/application/*"]
+order = 2
+
+[[layers]]
+name = "adapters"
+paths = [
+  "src/readwelt/api/*",
+  "src/readwelt/cli/*",
+  "src/readwelt/mcp/*",
+]
+order = 3
+
+[[boundaries]]
+from = "src/readwelt/domain/*"
+to = "src/readwelt/application/*"
+reason = "The domain module must not import the application module."
+
+[[boundaries]]
+from = "src/readwelt/domain/*"
+to = "src/readwelt/api/*"
+reason = "The domain module must not depend on HTTP adapters."
+
+[[boundaries]]
+from = "src/readwelt/domain/*"
+to = "src/readwelt/mcp/*"
+reason = "The domain module must not depend on MCP adapters."
