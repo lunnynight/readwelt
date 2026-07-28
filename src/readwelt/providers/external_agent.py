@@ -20,7 +20,7 @@ def stage_request_uri(run_id: str, stage: str) -> str:
 
 
 class ExternalAgentAdapter:
-    """Host-neutral reading loop shared by MCP, HTTP, CLI, and SDK callers."""
+    """Host-neutral reading loop shared by CLI, HTTP, and SDK callers."""
 
     def __init__(self, service: object):
         self._service = service

@@ -1,4 +1,4 @@
-"""Project facade shared by CLI, API and MCP adapters."""
+"""Project facade shared by CLI, API, and SDK adapters."""
 
 from __future__ import annotations
 

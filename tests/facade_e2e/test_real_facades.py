@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 import io
 import json
 from pathlib import Path
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
 from readwelt.api import create_app
 from readwelt.application import ReadweltApplicationService
 from readwelt.cli.main import main
 from readwelt.domain import ReadingStage
-from readwelt.mcp.server import MCPAdapter
 from readwelt.providers import StageRequest
-from readwelt.providers.projection import ProjectRootViolation
 from tests.interfaces.fakes import DeterministicFakeProvider
 
 
@@ -105,24 +101,3 @@ def test_fastapi_real_chain_and_artifact_read(tmp_path: Path) -> None:
     artifact = client.get(f"/v1/artifacts/{report['content_digest']}")
     assert artifact.status_code == 200
     assert "Readwelt 六阶段逆向阅读报告" in artifact.json()["content"]
-
-
-def test_mcp_adapter_uses_real_application_and_enforces_workspace(tmp_path: Path) -> None:
-    source = tmp_path / "article.txt"
-    source.write_text("正文证据。", encoding="utf-8")
-    service = _service(tmp_path)
-    adapter = MCPAdapter(service, service.root)
-
-    run = asyncio.run(adapter.read_document(str(source), provider="local"))
-    assert run["execution_status"] == "completed"
-    bundle = next(item for item in run["artifacts"] if item["artifact_type"] == "reading_bundle")
-    artifact = asyncio.run(adapter.get_artifact(bundle["content_digest"]))
-    assert artifact["digest"] == bundle["content_digest"]
-
-    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
-    outside.write_text("not in the Readwelt workspace", encoding="utf-8")
-    try:
-        with pytest.raises(ProjectRootViolation):
-            asyncio.run(adapter.import_document(str(outside)))
-    finally:
-        outside.unlink(missing_ok=True)

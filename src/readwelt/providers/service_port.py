@@ -1,4 +1,4 @@
-"""Narrow, duck-typed boundary shared by CLI, HTTP, and MCP adapters."""
+"""Narrow, duck-typed boundary shared by CLI, HTTP, and SDK adapters."""
 
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ class ReadweltApplicationServicePort(Protocol):
     def read(self, source_or_document_id: str, **options: Any) -> Any: ...
 
     def get_run_status(self, run_id: str) -> Any: ...
+
+    def get_artifact(self, digest: str) -> Any: ...
 
     def pull_stage_request(self, run_id: str, stage: str) -> Any: ...
 

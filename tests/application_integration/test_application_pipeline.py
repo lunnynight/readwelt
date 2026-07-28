@@ -508,7 +508,7 @@ def test_host_neutral_agent_turns_complete_without_an_internal_provider(
             turn = await agent.advance(
                 turn["run_id"],
                 {"claims": claims, "gaps": [], "warnings": []},
-                agent_name="generic-mcp-agent",
+                agent_name="generic-agent",
                 model="agent-model",
             )
         return turn

@@ -1,24 +1,50 @@
-# Host-neutral Agent integration
+# Host-neutral Skill and CLI integration
 
-Readwelt does not require an internal model provider when an external Agent owns
-the reading loop. The same versioned turn protocol is exposed through MCP,
-HTTP, CLI, and the Python SDK.
+Readwelt is a local tool, not a resident Agent server. An external Agent owns generation while
+short-lived CLI processes load durable project state, return one actionable turn, settle one
+candidate, and exit. The canonical integration is the repository Skill at
+`skills/readwelt/SKILL.md`.
 
-Claude Code also has a verified direct provider implementation. It launches the
-official CLI executable, reuses host authentication without persisting the
-credential in Readwelt, requests JSON-Schema structured output, and stores a
-host receipt for every stage. Codex and other Agents currently consume the
-host-neutral turn protocol; they are not yet verified direct process providers.
+The optional HTTP and Python interfaces remain application adapters, but the Skill requires
+neither. The former stdio MCP adapter and `readwelt-mcp` executable were removed because every
+host/subagent created another long-lived Python process tree without adding reading capability.
+
+Claude Code also has an optional direct provider implementation. It launches one official CLI
+subprocess per bounded operation, reuses host authentication without persisting credentials, and
+is separate from the Skill-owned Agent loop.
+
+## Process and state model
+
+```text
+Codex / Claude Code / Gemini
+             |
+       skills/readwelt
+             |
+    short-lived readwelt CLI
+             |
+   .readwelt durable project
+             |
+ ReadweltApplicationService
+```
+
+Each command receives an explicit absolute `--project` path. Runs, requests, submitted candidates,
+settled stages, provenance, and completion artifacts survive process and chat termination. A later
+host can resume from the same project directory and run id.
+
+Mutable CLI operations acquire a bounded project-local interprocess lock. The lock covers only one
+deterministic application operation; Agent inference occurs after the CLI exits and therefore
+never holds the lock. Status, diagnostics, and artifact inspection remain read-only.
 
 ## Turn protocol
 
-An Agent learns only three operations:
+The Agent-facing operations are:
 
-1. `start_agent_reading(source, ...)`
-2. `get_agent_turn(run_id)`
-3. `submit_agent_turn(run_id, candidate, agent_name, model, ...)`
+1. `agent-start SOURCE`
+2. `agent-turn RUN_ID`
+3. `agent-submit RUN_ID -`
+4. `artifact-get DIGEST`
 
-The first two return `readwelt.agent-turn.v1`. While work remains:
+`agent-start` and `agent-turn` return `readwelt.agent-turn.v1`. While work remains:
 
 ```json
 {
@@ -34,10 +60,17 @@ The first two return `readwelt.agent-turn.v1`. While work remains:
 }
 ```
 
-The Agent generates only the `candidate` object described by
-`request.response_schema`. Readwelt binds the run id, current stage, request
-digest, Agent identity, and model before settlement. The response is the next
-turn, so callers do not need a separate pull/status loop.
+The host generates only the candidate object described by `request.response_schema`. Readwelt
+binds the run id, current stage, request digest, Agent identity, and model during submission:
+
+```powershell
+Get-Content .\candidate.json -Raw |
+  readwelt agent-submit run_... - --agent-name codex --model host-model `
+    --project C:\reading\.readwelt --json
+```
+
+The result is the next turn. No pull/status busy loop and no in-memory session identity are
+required.
 
 After stage 6:
 
@@ -53,95 +86,57 @@ After stage 6:
 }
 ```
 
-The run and mailbox are durable. A different Agent host can resume with
-`get_agent_turn` as long as it can reach the same Readwelt project directory.
+Inspect artifact metadata before loading content:
+
+```powershell
+readwelt artifact-get sha256:... --project C:\reading\.readwelt --json
+readwelt artifact-get sha256:... --content --project C:\reading\.readwelt --json
+```
+
+## Skill boundary
+
+The Skill decides whether a user request needs Readwelt and orchestrates the CLI loop. It does not
+contain stage policy, ArticleGraph interpretation rules, Completion Engine policy, response
+schemas, credentials, or model routing. Those remain versioned Readwelt inputs and contracts.
+
+The host must:
+
+- pass the same normalized project path on every invocation;
+- use `--json` and parse stdout rather than scraping human output;
+- build the candidate from the current `request.response_schema`;
+- submit candidate JSON through stdin;
+- preserve run ids, digests, and provenance identities exactly;
+- retrieve only the completion artifacts needed for the user response.
 
 ## ArticleGraph provider boundary
 
-Readwelt, rather than the Agent host, decides what the current stage may read.
-The provider-bound `StageRequest` contains a bounded StageView envelope with:
+Readwelt, rather than the Agent host, decides what the current stage may read. The provider-bound
+`StageRequest` contains a bounded StageView envelope with:
 
-- source excerpts and typed identities for the text units/slices and advisory
-  graph objects actually presented;
+- source excerpts and typed identities for the text units/slices and advisory graph objects
+  actually presented;
 - SourceIndex, graph, and provenance-ledger lineage;
-- separate source, visited, selected, serialized, presented, cited, critical,
-  and omitted coverage state;
-- explicit blocking records and integrity-bound continuation when the source
-  does not fit the hard serialized-input budget.
+- separate source, visited, selected, serialized, presented, cited, critical, and omitted coverage
+  state;
+- explicit blocking records and integrity-bound continuation when the source does not fit the hard
+  serialized-input budget.
 
-Provider-visible material is validated through SourceIndex and append-only
-ledger events to typed Source Plane records. Unknown or stale references fail
-empty. The Agent may cite admitted source and ArticleGraph identities, but its
-output remains a stage conclusion and cannot reclassify itself as a source fact.
+Provider-visible material is validated through SourceIndex and append-only ledger events to typed
+Source Plane records. Unknown or stale references fail empty. The Agent may cite admitted source
+and ArticleGraph identities, but its output remains a stage conclusion and cannot reclassify
+itself as a source fact.
 
-ArticleGraph is therefore a locating substrate, not the Agent's answer. Xberg
-currently supplies primary content extraction, while the Source Plane retains
-the original file, exact normalized ranges, preserved elements, and capability
-gaps. An image-only scanned PDF remains addressable even when OCR text is
-absent. Details and current backend evidence are in
-[ArticleGraph Source Plane Architecture](articlegraph-source-plane-baseline.md)
-and the
-[Open-source Adoption Record](articlegraph-open-source-adoption.md).
+ArticleGraph is a locating substrate, not the Agent's answer. Xberg supplies primary content
+extraction, while the Source Plane retains the original file, exact normalized ranges, preserved
+elements, and capability gaps. An image-only scanned PDF remains addressable even when OCR text is
+absent.
 
-The host executes the six-stage candidate-generation turn. Readwelt owns stage
-order, budget, continuation, validation, settlement, and persistence.
-`CompletionPlan` and the Completion Engine are not part of the current
-ArticleGraph hardening change.
+The host executes candidate generation. Readwelt owns stage order, budget, continuation,
+validation, settlement, and persistence. `CompletionPlan` and the Completion Engine remain product
+capabilities rather than Skill prompt content.
 
-## MCP
+## Migration from MCP
 
-Start the stdio server with an explicit project directory:
-
-```powershell
-uv run readwelt-mcp --project C:\path\to\project\.readwelt
-```
-
-`READWELT_PROJECT_ROOT` is the environment-variable equivalent. Every MCP host
-uses the same command and the same three tools. This host-neutral path is
-separate from the direct `--provider claude-code` process provider.
-
-Example MCP server entry:
-
-```json
-{
-  "mcpServers": {
-    "readwelt": {
-      "command": "C:\\path\\to\\readwelt\\.venv\\Scripts\\readwelt-mcp.exe",
-      "args": ["--project", "C:\\path\\to\\project\\.readwelt"]
-    }
-  }
-}
-```
-
-## HTTP
-
-The same loop is available to Agents that cannot host MCP:
-
-```text
-POST /v1/agent-sessions
-GET  /v1/agent-sessions/{run_id}
-POST /v1/agent-sessions/{run_id}/turns
-```
-
-The submit body contains:
-
-```json
-{
-  "candidate": {"claims": [], "gaps": [], "warnings": []},
-  "agent_name": "my-agent",
-  "model": "my-model"
-}
-```
-
-## CLI
-
-Agents restricted to process execution can use:
-
-```powershell
-readwelt agent-start article.md --json
-readwelt agent-turn run_... --json
-readwelt agent-submit run_... candidate.json --agent-name my-agent --model my-model --json
-```
-
-Legacy `pull_stage_request` and `submit_stage_candidate` remain available for
-existing clients, but new integrations should use the turn protocol.
+Remove any `readwelt` entry from host `mcpServers` configuration. Install the repository Skill and
+ensure the `readwelt` executable is available instead. There is no replacement daemon, port,
+stdio transport, Job Object, parent watcher, or process reaper.

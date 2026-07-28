@@ -11,7 +11,7 @@
 |---|---|---|---|
 | 最终 provider 输入硬预算 | 已完成 | 对最终 StageRequest envelope 计数；continuation、blocking 和 oversized slicing 有回归门禁 | 不宣称与每个商业 provider tokenizer 完全等价；当前记录 exact tokenizer 或保守上界 |
 | ArticleGraph 制品体积与去重 | 已完成当前门禁 | CAS unique bytes、aggregate bytes、rebuild reuse、peak memory、streaming read 已在 100k+ 文档测量 | 后续新增制品仍需维持相同门禁 |
-| 真实 Agent 宿主 | 部分完成 | host-neutral CLI/HTTP/MCP/mailbox；真实 Claude Code provider 使用宿主认证并保存 receipt | Codex、Gemini、OpenCode 尚未完成同合同真实进程 E2E |
+| 真实 Agent 宿主 | 部分完成 | host-neutral Skill/CLI/HTTP/mailbox；真实 Claude Code provider 使用宿主认证并保存 receipt | Codex、Gemini、OpenCode 尚未完成同合同真实进程 E2E |
 | 中文 linguistic backend | 已完成可选生产接入 | Stanza 1.14.0 + 固定 zh-hans 模型 adapter、grounding、lineage、显式降级 | 非默认；HanLP/PaddleNLP 未通过当前门禁，LTP 有许可边界，DeepKE 仅作参考 |
 | PDF/EPUB/100k+ 长文验收 | 已完成 | 真实 7-case corpus，7/7 acceptance passed，完整 bounded traversal 和 hard-budget gate | 这是定位与来源可达性验收，不是六阶段理解质量 benchmark |
 | CompletionPlan | 未实现 | 无可持久化 gap plan、research scheduling 或 completion criteria 契约 | 下一阶段核心产品工作 |
@@ -74,7 +74,7 @@ Source Plane 现在包含：
 
 ## 3. Agent 宿主边界
 
-当前已有 host-neutral 的 StageRequest/StageCandidate 合同、持久 mailbox、CLI、HTTP 与 MCP 接口。真实 Claude Code provider：
+当前已有 host-neutral 的 StageRequest/StageCandidate 合同、持久 mailbox、Skill、CLI 与 HTTP 接口。真实 Claude Code provider：
 
 - 启动官方非交互 CLI；
 - 复用宿主已有认证和模型配置；

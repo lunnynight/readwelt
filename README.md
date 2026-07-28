@@ -184,23 +184,18 @@ Xberg `1.0.0rc38` 负责正文抽取；源文件不会被原地修改。对于 E
 版本进入 snapshot identity，因此结构修复会生成新 snapshot，不会被同正文 digest
 的旧缓存静默覆盖。所有运行状态默认保存在项目相对目录。
 
-## Agent 接管与 MCP 挂载
+## Agent 接管与 Skill + CLI
 
-启动 stdio MCP server：
-
-```powershell
-uv run readwelt-mcp --project C:\path\to\project\.readwelt
-```
-
-Readwelt 的外部 Agent 接口不依赖 Claude Code 或 Codex。任何支持 MCP、HTTP、CLI
-或 Python SDK 的 Agent 都使用同一个 `readwelt.agent-turn.v1` 协议：
+Readwelt 是按需执行的本地工具，不再提供 stdio MCP server。Codex、Claude Code、
+Gemini 等宿主通过仓库中的 `skills/readwelt` 判断何时进入深度阅读，再用短进程 CLI
+驱动同一个 `readwelt.agent-turn.v1` 协议：
 
 ```text
-start_agent_reading
+agent-start
         ↓
 generate_stage_candidate
         ↓
-submit_agent_turn ──> 下一阶段
+agent-submit ──> 下一阶段
         ↓
 completed + ReadingBundle + 中文报告
 ```
@@ -209,7 +204,7 @@ completed + ReadingBundle + 中文报告
 候选内容；Readwelt 自动绑定 run、stage、request digest、Agent 身份与模型，并立即
 返回下一阶段。这个路径不要求配置 Readwelt 内部 provider。
 
-挂载后，Agent 应根据用户的**阅读意图**主动选择 Readwelt，不必等待用户点名工具。
+安装 Skill 后，Agent 应根据用户的**阅读意图**主动选择 Readwelt，不必等待用户点名。
 当用户希望理解一篇文章的论证、背景、作者模型、成立边界或可迁移方法时，应进入
 逆向阅读流程；普通摘要、代码 context 读取和与文章无关的问答则不需要调用。
 
@@ -221,14 +216,27 @@ completed + ReadingBundle + 中文报告
 恢复作者的问题意识，检查结论边界，最后给出可迁移原则。
 ```
 
-如果希望任意外部 Agent 自己参与每一个阅读阶段：
+本地仓库可直接安装 Skill：
 
 ```powershell
-uv run readwelt agent-start .\article.txt --json
+npx skills add lunnynight/readwelt --skill readwelt
 ```
 
-运行会在当前阶段等待，且可以由另一 Agent 宿主恢复。MCP、HTTP 与 CLI 的完整挂载
-契约见 [Host-neutral Agent integration](docs/architecture/agent-integration.md)。
+CLI 工作流始终传入同一个绝对项目目录：
+
+```powershell
+uv run readwelt doctor --project C:\reading\.readwelt --json
+uv run readwelt agent-start .\article.txt --project C:\reading\.readwelt --json
+uv run readwelt agent-turn run_... --project C:\reading\.readwelt --json
+Get-Content .\candidate.json -Raw |
+  uv run readwelt agent-submit run_... - --agent-name codex --model host-model `
+    --project C:\reading\.readwelt --json
+uv run readwelt artifact-get sha256:... --content --project C:\reading\.readwelt --json
+```
+
+每条命令完成后都会退出，不保留 Readwelt server。运行在当前阶段等待时，可由另一
+Agent 宿主通过同一项目目录和 run id 恢复。完整契约见
+[Host-neutral Agent integration](docs/architecture/agent-integration.md)。
 文章中间表示的当前实现与能力边界见
 [ArticleGraph Foundation](docs/architecture/article-graph.md) 和
 [Source Plane 架构](docs/architecture/articlegraph-source-plane-baseline.md)。
@@ -311,13 +319,13 @@ BM25、BM25+、BM25L 的可重复中文 seed 验收和真实语料边界见
 
 ## 接口
 
-四个入口共享同一个 `ReadweltApplicationService`：
+三个入口共享同一个 `ReadweltApplicationService`：
 
 ```text
 CLI ─────────┐
 Python SDK ──┼──> ReadweltApplicationService ──> six-stage engine ──> report
-FastAPI ─────┤                 │                       │
-MCP ─────────┘                 │                       └── local / API / Agent
+FastAPI ─────┘                 │                       │
+                              │                       └── local / API / Agent
                               │
                     Python orchestration
                               │ PyO3
@@ -332,6 +340,11 @@ readwelt prepare <document-id>          建立非生成式语义产物
 readwelt batch-prepare <paths...>       有界并发准备多篇文章
 readwelt read <path-or-document-id>     执行六阶段逆向阅读
 readwelt show <run-id>                  查看阅读状态
+readwelt doctor                         检查短进程 CLI 环境
+readwelt agent-start <path>             启动宿主 Agent 阅读
+readwelt agent-turn <run-id>            恢复当前阶段
+readwelt agent-submit <run-id> -        从 stdin 提交候选
+readwelt artifact-get <sha256>          获取完成制品
 ```
 
 ### Python

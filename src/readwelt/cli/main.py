@@ -9,17 +9,24 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Sequence
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Never, TextIO
 
+from readwelt.cli.locking import ProjectBusyError, project_mutation_lock
 from readwelt.providers.contracts import (
     ProviderContractError,
     ProviderSelection,
 )
 from readwelt.providers.external_agent import ExternalAgentAdapter
-from readwelt.providers.projection import resolve_project_root, to_jsonable
+from readwelt.providers.projection import (
+    ensure_within_project,
+    resolve_project_root,
+    to_jsonable,
+)
 from readwelt.providers.service_port import (
     ApplicationServiceUnavailable,
     invoke,
@@ -28,8 +35,17 @@ from readwelt.providers.service_port import (
 )
 
 
+class CLIArgumentError(ValueError):
+    code = "invalid_arguments"
+
+
+class ReadweltArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> Never:
+        raise CLIArgumentError(message)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="readwelt")
+    parser = ReadweltArgumentParser(prog="readwelt")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     read_parser = subparsers.add_parser("read", help="Import and execute the reading pipeline")
@@ -90,6 +106,24 @@ def build_parser() -> argparse.ArgumentParser:
     agent_submit.add_argument("--agent-name", required=True)
     agent_submit.add_argument("--model")
     _add_common_options(agent_submit)
+
+    artifact_get = subparsers.add_parser(
+        "artifact-get",
+        help="Return bounded metadata for a content-addressed artifact",
+    )
+    artifact_get.add_argument("digest")
+    artifact_get.add_argument(
+        "--content",
+        action="store_true",
+        help="Include artifact content explicitly; metadata-only by default",
+    )
+    _add_common_options(artifact_get)
+
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Check the short-lived CLI environment without starting a provider",
+    )
+    _add_common_options(doctor)
     return parser
 
 
@@ -102,6 +136,11 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     output = parser.add_mutually_exclusive_group()
     output.add_argument("--json", action="store_true", dest="as_json")
     output.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--lock-timeout",
+        type=float,
+        help="Seconds to wait for another project mutation; defaults to 30",
+    )
 
 
 def _add_provider_options(parser: argparse.ArgumentParser) -> None:
@@ -121,7 +160,13 @@ def _add_provider_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-async def execute(args: argparse.Namespace, service: object) -> Any:
+async def execute(
+    args: argparse.Namespace,
+    service: object,
+    *,
+    project_root: Path,
+    stdin: TextIO,
+) -> Any:
     if args.command == "import":
         return await invoke(service, "import_document", args.source)
     if args.command == "prepare":
@@ -145,8 +190,11 @@ async def execute(args: argparse.Namespace, service: object) -> Any:
     if args.command == "agent-turn":
         return await ExternalAgentAdapter(service).current(args.run_id)
     if args.command == "agent-submit":
-        with Path(args.candidate_file).open(encoding="utf-8") as candidate_stream:
-            candidate = json.load(candidate_stream)
+        if args.candidate_file == "-":
+            candidate = json.load(stdin)
+        else:
+            with Path(args.candidate_file).open(encoding="utf-8") as candidate_stream:
+                candidate = json.load(candidate_stream)
         if not isinstance(candidate, dict):
             raise ValueError("candidate file must contain a JSON object")
         return await ExternalAgentAdapter(service).advance(
@@ -155,6 +203,18 @@ async def execute(args: argparse.Namespace, service: object) -> Any:
             agent_name=args.agent_name,
             model=args.model,
         )
+    if args.command == "artifact-get":
+        result = to_jsonable(await invoke(service, "get_artifact", args.digest))
+        if not isinstance(result, dict):
+            raise ValueError("artifact projection must be a JSON object")
+        path = result.get("path")
+        if not isinstance(path, str):
+            raise ValueError("artifact projection has no path")
+        ensure_within_project(project_root, path)
+        if not args.content:
+            result.pop("content", None)
+            result.pop("content_encoding", None)
+        return {"schema_version": "readwelt.artifact.v1", **result}
     if args.command == "read":
         selection = ProviderSelection.build(
             mode=args.provider_mode,
@@ -178,19 +238,47 @@ def main(
     service: object | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
+    stdin: TextIO | None = None,
 ) -> int:
     out = stdout or sys.stdout
     err = stderr or sys.stderr
+    input_stream = stdin or sys.stdin
     parser = build_parser()
-    args = parser.parse_args(argv)
+    raw_arguments = tuple(sys.argv[1:] if argv is None else argv)
+    args: argparse.Namespace | None = None
 
     try:
+        args = parser.parse_args(raw_arguments)
         project_root = resolve_project_root(args.project)
-        active_service = service or load_application_service(
-            project_root,
-            requested_provider=getattr(args, "provider", None),
-        )
-        result = asyncio.run(execute(args, active_service))
+        if args.command == "doctor":
+            result = _doctor(project_root)
+        elif args.command in _MUTATING_COMMANDS:
+            with project_mutation_lock(project_root, timeout=args.lock_timeout):
+                active_service = service or load_application_service(
+                    project_root,
+                    requested_provider=getattr(args, "provider", None),
+                )
+                result = asyncio.run(
+                    execute(
+                        args,
+                        active_service,
+                        project_root=project_root,
+                        stdin=input_stream,
+                    )
+                )
+        else:
+            active_service = service or load_application_service(
+                project_root,
+                requested_provider=getattr(args, "provider", None),
+            )
+            result = asyncio.run(
+                execute(
+                    args,
+                    active_service,
+                    project_root=project_root,
+                    stdin=input_stream,
+                )
+            )
         if not args.quiet:
             projected = to_jsonable(result)
             if args.as_json:
@@ -198,14 +286,51 @@ def main(
             else:
                 print(_human_output(args.command, projected), file=out)
         return 0
-    except (ProviderContractError, ApplicationServiceUnavailable, ValueError) as exc:
+    except (
+        OSError,
+        ProjectBusyError,
+        ProviderContractError,
+        ApplicationServiceUnavailable,
+        ValueError,
+    ) as exc:
         code = getattr(exc, "code", "invalid_request")
         payload = {"error": {"code": code, "message": str(exc)}}
-        if getattr(args, "as_json", False):
+        if getattr(args, "as_json", False) or "--json" in raw_arguments:
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True), file=err)
         else:
             print(f"{code}: {exc}", file=err)
         return 2
+
+
+_MUTATING_COMMANDS = frozenset(
+    {
+        "read",
+        "import",
+        "prepare",
+        "batch-prepare",
+        "agent-start",
+        "agent-submit",
+    }
+)
+
+
+def _doctor(project_root: Path) -> dict[str, object]:
+    existing_directory = project_root if project_root.exists() else project_root.parent
+    try:
+        package_version = version("readwelt")
+    except PackageNotFoundError:
+        package_version = "source"
+    writable = existing_directory.is_dir() and os.access(existing_directory, os.W_OK)
+    return {
+        "schema_version": "readwelt.doctor.v1",
+        "version": package_version,
+        "project_root": str(project_root),
+        "project_exists": project_root.is_dir(),
+        "writable": writable,
+        "ready": writable,
+        "process_model": "short_lived_cli",
+        "mcp_required": False,
+    }
 
 
 def _human_output(command: str, value: Any) -> str:

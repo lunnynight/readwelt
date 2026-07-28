@@ -30,7 +30,6 @@ name = "adapters"
 paths = [
   "src/readwelt/api/*",
   "src/readwelt/cli/*",
-  "src/readwelt/mcp/*",
 ]
 order = 3
 
@@ -43,8 +42,3 @@ reason = "The domain module must not import the application module."
 from = "src/readwelt/domain/*"
 to = "src/readwelt/api/*"
 reason = "The domain module must not depend on HTTP adapters."
-
-[[boundaries]]
-from = "src/readwelt/domain/*"
-to = "src/readwelt/mcp/*"
-reason = "The domain module must not depend on MCP adapters."
