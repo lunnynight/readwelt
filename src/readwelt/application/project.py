@@ -12,6 +12,8 @@ from uuid import uuid4
 from readwelt.article_graph import (
     ArticleGraphBuilder,
     ArticleGraphBuildResult,
+    ArticleGraphQueryRequest,
+    QueryPage,
 )
 from readwelt.batch import BatchResult, LocalBatchPipeline
 from readwelt.domain import (
@@ -304,6 +306,33 @@ class ReadweltApplicationService:
 
     def get_artifact(self, digest: str) -> dict[str, Any]:
         return _get_artifact(self, digest)
+
+    def get_article_graph_page(
+        self,
+        document_id: str,
+        *,
+        collection: str = "nodes",
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        from .article_graph_pages import article_graph_page
+
+        return article_graph_page(
+            self,
+            document_id,
+            collection=collection,
+            limit=limit,
+            cursor=cursor,
+        )
+
+    def query_article_graph(
+        self,
+        request: ArticleGraphQueryRequest | Mapping[str, object],
+    ) -> QueryPage:
+        """Query verified persisted ArticleGraph and Source Plane artifacts."""
+        from .article_graph_queries import query_article_graph
+
+        return query_article_graph(self, request)
 
     def pull_stage_request(self, run_id: str, stage: str) -> StageRequest:
         return self._mailbox.pull(run_id, stage)

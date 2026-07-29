@@ -30,6 +30,11 @@ from .source_index import (
     SourceNeighborhood,
     UnitKnowledge,
 )
+from .source_index_candidates import (
+    SourceCandidateKind,
+    SourceCandidateMatch,
+    SourceIndexCandidate,
+)
 
 PROVENANCE_CLOSURE_SCHEMA_VERSION = _closure_models.PROVENANCE_CLOSURE_SCHEMA_VERSION
 ProvenanceClosureIssue = _closure_models.ProvenanceClosureIssue
@@ -61,10 +66,13 @@ __all__ = [
     "ProvenanceLedger",
     "ProvenanceLedgerArtifact",
     "SourceIndex",
+    "SourceIndexCandidate",
     "SourceIndexClosure",
     "SourceIndexDiagnostic",
     "SourceLookup",
     "SourceNeighborhood",
+    "SourceCandidateKind",
+    "SourceCandidateMatch",
     "SourceRecordKind",
     "TypedSourceReference",
     "UnitKnowledge",

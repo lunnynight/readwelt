@@ -119,6 +119,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_common_options(artifact_get)
 
+    graph_page = subparsers.add_parser(
+        "article-graph-page",
+        help="Return one stable page from a prepared ArticleGraph collection",
+    )
+    graph_page.add_argument("document_id")
+    graph_page.add_argument(
+        "--collection",
+        choices=("nodes", "edges", "claims", "mentions"),
+        default="nodes",
+    )
+    graph_page.add_argument("--limit", type=int, default=100)
+    graph_page.add_argument("--cursor")
+    _add_common_options(graph_page)
+
     doctor = subparsers.add_parser(
         "doctor",
         help="Check the short-lived CLI environment without starting a provider",
@@ -215,6 +229,15 @@ async def execute(
             result.pop("content", None)
             result.pop("content_encoding", None)
         return {"schema_version": "readwelt.artifact.v1", **result}
+    if args.command == "article-graph-page":
+        return await invoke(
+            service,
+            "get_article_graph_page",
+            args.document_id,
+            collection=args.collection,
+            limit=args.limit,
+            cursor=args.cursor,
+        )
     if args.command == "read":
         selection = ProviderSelection.build(
             mode=args.provider_mode,

@@ -37,6 +37,34 @@ def test_prepare_supports_async_service_method(tmp_path) -> None:
     assert json.loads(output.getvalue())["status"] == "prepared"
 
 
+def test_article_graph_page_command_calls_shared_service(tmp_path) -> None:
+    service = FakeService(tmp_path)
+    output = io.StringIO()
+
+    exit_code = main(
+        [
+            "article-graph-page",
+            "doc-1",
+            "--collection",
+            "claims",
+            "--limit",
+            "17",
+            "--json",
+        ],
+        service=service,
+        stdout=output,
+    )
+
+    assert exit_code == 0
+    page = json.loads(output.getvalue())
+    assert page["schema_version"] == "readwelt.article-graph-page.v1"
+    assert service.calls[-1] == (
+        "get_article_graph_page",
+        ("doc-1",),
+        {"collection": "claims", "limit": 17, "cursor": None},
+    )
+
+
 def test_provider_conflict_has_stable_machine_error(tmp_path) -> None:
     error = io.StringIO()
 

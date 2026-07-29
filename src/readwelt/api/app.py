@@ -160,6 +160,32 @@ def create_app(
             raise request_error(ValueError("options must be an object"))
         return to_jsonable(await invoke(active_service, "prepare", document_id, **options))
 
+    @app.get(
+        "/v1/documents/{document_id}/article-graph/{collection}",
+        response_model=dict[str, Any],
+    )
+    async def get_article_graph_page(
+        document_id: str,
+        collection: str,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> Any:
+        try:
+            return to_jsonable(
+                await invoke(
+                    active_service,
+                    "get_article_graph_page",
+                    document_id,
+                    collection=collection,
+                    limit=limit,
+                    cursor=cursor,
+                )
+            )
+        except FileNotFoundError as exc:
+            raise not_found_error("document", document_id) from exc
+        except ValueError as exc:
+            raise request_error(exc) from exc
+
     @app.post(
         "/v1/batches/prepare",
         status_code=status.HTTP_202_ACCEPTED,

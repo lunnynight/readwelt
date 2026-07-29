@@ -24,6 +24,15 @@ class ReadweltApplicationServicePort(Protocol):
 
     def prepare(self, document_id: str, **options: Any) -> Any: ...
 
+    def get_article_graph_page(
+        self,
+        document_id: str,
+        *,
+        collection: str = "nodes",
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> Any: ...
+
     def batch_prepare(self, sources: list[str], **options: Any) -> Any: ...
 
     def read(self, source_or_document_id: str, **options: Any) -> Any: ...

@@ -111,3 +111,30 @@ class FakeService:
             "path": str(self.project_root / "objects" / digest),
             "content": "small",
         }
+
+    def get_article_graph_page(
+        self,
+        document_id: str,
+        *,
+        collection: str = "nodes",
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            (
+                "get_article_graph_page",
+                (document_id,),
+                {"collection": collection, "limit": limit, "cursor": cursor},
+            )
+        )
+        return {
+            "schema_version": "readwelt.article-graph-page.v1",
+            "document_id": document_id,
+            "collection": collection,
+            "graph_digest": "sha256:" + "1" * 64,
+            "offset": 0,
+            "limit": limit,
+            "total": 1,
+            "items": [{"node_id": "node-1"}],
+            "next_cursor": None,
+        }

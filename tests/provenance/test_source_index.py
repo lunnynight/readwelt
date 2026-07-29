@@ -7,7 +7,13 @@ import pytest
 
 from readwelt.article_graph import ArticleGraphBuilder, ArticleGraphBuildResult
 from readwelt.article_graph.digest import content_digest
-from readwelt.provenance import ProvenanceLedger, SourceIndex, SourceLookup
+from readwelt.provenance import (
+    ProvenanceLedger,
+    SourceCandidateKind,
+    SourceCandidateMatch,
+    SourceIndex,
+    SourceLookup,
+)
 from readwelt.runner.snapshot import SectionStructure, snapshot_from_text
 from readwelt.storage import ArtifactStore, ProjectLayout
 
@@ -112,6 +118,56 @@ def test_source_first_lookup_survives_empty_semantic_graph(tmp_path: Path) -> No
     assert index.validate_closure().valid
 
 
+def test_exact_candidates_preserve_seed_order_and_source_ownership(tmp_path: Path) -> None:
+    build = _build(tmp_path)
+    unit_id = build.unitization.units[0].unit_id
+    node = build.graph.nodes[0]
+    edge = build.graph.edges[0]
+    claim = build.graph.claims[0]
+
+    candidates = build.source_index.retrieve_exact_candidates(
+        (claim.claim_id, unit_id, edge.edge_id, node.node_id, "unknown", claim.claim_id)
+    )
+
+    assert tuple(item.object_id for item in candidates) == (
+        claim.claim_id,
+        unit_id,
+        edge.edge_id,
+        node.node_id,
+    )
+    assert tuple(item.object_kind for item in candidates) == (
+        SourceCandidateKind.CLAIM,
+        SourceCandidateKind.SOURCE_UNIT,
+        SourceCandidateKind.RELATION,
+        SourceCandidateKind.NODE,
+    )
+    assert all(item.match_kind is SourceCandidateMatch.EXACT_ID for item in candidates)
+    assert all(item.source_unit_ids for item in candidates)
+
+
+def test_lexical_candidates_cover_source_and_grounded_knowledge_deterministically(
+    tmp_path: Path,
+) -> None:
+    build = _build(tmp_path)
+
+    first = build.source_index.retrieve_lexical_candidates("revision cache")
+    second = build.source_index.retrieve_lexical_candidates("revision cache")
+
+    assert first == second
+    assert first
+    assert {candidate.object_kind for candidate in first}.issuperset(
+        {
+            SourceCandidateKind.SOURCE_UNIT,
+            SourceCandidateKind.NODE,
+            SourceCandidateKind.RELATION,
+            SourceCandidateKind.CLAIM,
+        }
+    )
+    assert all(candidate.match_kind is SourceCandidateMatch.LEXICAL for candidate in first)
+    assert all(candidate.source_unit_ids for candidate in first)
+    assert build.source_index.retrieve_lexical_candidates("not-present") == ()
+
+
 def test_unknown_queries_and_grounding_fail_empty_with_diagnostic(
     tmp_path: Path,
 ) -> None:
@@ -136,6 +192,7 @@ def test_unknown_queries_and_grounding_fail_empty_with_diagnostic(
     assert index.locate_offsets(-1, 2) == SourceLookup()
     assert index.locate_page(0) == SourceLookup()
     assert index.locate_lexical("not-present") == SourceLookup()
+    assert index.retrieve_exact_candidates((node.node_id,)) == ()
     assert index.neighborhood("unit:unknown").parent_unit_id is None
     assert any(
         diagnostic.code == "unknown_node_source_unit" and diagnostic.identity == "unit:unknown"
