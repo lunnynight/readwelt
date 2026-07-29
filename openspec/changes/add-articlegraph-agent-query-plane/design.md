@@ -65,6 +65,9 @@ Each reading stage receives a small stage bootstrap plus access to permitted que
 
 This change defines the consumption contract; it does not yet redesign each stage's reasoning prompt or assert that all six stages are optimized.
 
+The migration exposure accounting and its explicit no-quality-claim boundary are
+recorded in `stage-context-exposure.md`.
+
 ### 7. Gate A/B conclusions on experimental validity
 
 Baseline and treatment use the same source document, task set, model, model settings, wall-clock policy, and answer schema. The treatment receives ArticleGraph access; the baseline does not. Runs record model usage, elapsed time, tool trajectories, query receipts, preprocessing amortization, and evaluator evidence. A treatment run without direct matching query receipts is invalid, as is a run without a final parseable answer.

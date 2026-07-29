@@ -60,8 +60,12 @@ class QueryContinuationCodec:
             )
         if continuation.next_offset > len(candidates):
             fail_query(QueryErrorCode.INVALID_CONTINUATION, "continuation offset is out of range")
-        remaining = tuple(item.object_id for item in candidates[continuation.next_offset :])
-        if remaining != continuation.remaining_frontier:
+        expected_ordering_key = (
+            (candidates[continuation.next_offset - 1].object_id,)
+            if continuation.next_offset
+            else ()
+        )
+        if expected_ordering_key != continuation.ordering_key:
             fail_query(
                 QueryErrorCode.RESTART_REQUIRED,
                 "query candidate ordering changed; restart against the current snapshot",
@@ -84,8 +88,11 @@ class QueryContinuationCodec:
             budget_digest=content_digest(request.budget.to_dict()),
             next_offset=end,
             ordering_key=(candidates[end - 1].object_id,),
-            remaining_frontier=tuple(item.object_id for item in candidates[end:]),
-            visited_object_ids=tuple(item.object_id for item in candidates[:end]),
+            # Candidate order is deterministically rebuilt from the snapshot and
+            # request digests. Serializing the full frontier made a five-hit page
+            # carry hundreds of kilobytes of continuation state.
+            remaining_frontier=(),
+            visited_object_ids=(),
         )
         return self.encode(continuation)
 

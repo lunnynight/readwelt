@@ -15,21 +15,21 @@
 
 ## 3. Public Interfaces
 
-- [ ] 3.1 Add one ArticleGraph CLI command family for all query operations with JSON output and stable exit/error contracts
-- [ ] 3.2 Add the Python query-service entry point over persisted graph artifacts and source indexes
-- [ ] 3.3 Add CLI/Python parity tests proving equivalent normalized requests return equivalent ordered results
-- [ ] 3.4 Add end-to-end fixtures using representative Xberg-produced Chinese research PDFs without requiring embeddings or a graph database
+- [x] 3.1 Add one ArticleGraph CLI command family for all query operations with JSON output and stable exit/error contracts
+- [x] 3.2 Add the Python query-service entry point over persisted graph artifacts and source indexes
+- [x] 3.3 Add CLI/Python parity tests proving equivalent normalized requests return equivalent ordered results
+- [x] 3.4 Add end-to-end fixtures using representative Xberg-produced Chinese research PDFs without requiring embeddings or a graph database
 
 ## 4. Six-Stage Reading Integration
 
-- [ ] 4.1 Define per-stage allowed query intents, default budgets, and query-receipt persistence
-- [ ] 4.2 Migrate one reading stage from eager `StageView` consumption to the query service and run parity/budget tests
-- [ ] 4.3 Migrate the remaining stages while retaining the compatibility adapter until regression tests pass
-- [ ] 4.4 Measure and document per-stage context exposure before and after migration without claiming quality gains prematurely
+- [x] 4.1 Define per-stage allowed query intents, default budgets, and query-receipt persistence
+- [x] 4.2 Migrate one reading stage from eager `StageView` consumption to the query service and run parity/budget tests
+- [x] 4.3 Migrate the remaining stages while retaining the compatibility adapter until regression tests pass
+- [x] 4.4 Measure and document per-stage context exposure before and after migration without claiming quality gains prematurely
 
 ## 5. Controlled Evaluation
 
-- [ ] 5.1 Build a preregistered stratified manifest from `“海量”专题` with immutable document digests, gold anchors, tasks, rubrics, and exclusions
+- [x] 5.1 Build a preregistered stratified manifest from `“海量”专题` with immutable document digests, gold anchors, tasks, rubrics, and exclusions
 - [ ] 5.2 Enforce matched baseline/treatment configuration and persist model usage, timing, tool trajectories, exposed evidence, query receipts, and final answers
 - [ ] 5.3 Implement validity gates for missing treatment use, mismatched receipts, unparseable answers, context failure, and incomplete cost telemetry
 - [ ] 5.4 Report location, citation, comprehension, latency, tokens, failures, and cold/warm/amortized infrastructure costs separately

@@ -4,6 +4,7 @@ import io
 import json
 
 from readwelt.application import ReadweltApplicationService
+from readwelt.article_graph import QueryObjectKind, QueryOperation
 from readwelt.cli.main import main
 
 from .fakes import FakeService
@@ -63,6 +64,40 @@ def test_article_graph_page_command_calls_shared_service(tmp_path) -> None:
         ("doc-1",),
         {"collection": "claims", "limit": 17, "cursor": None},
     )
+
+
+def test_articlegraph_query_family_normalizes_public_request(tmp_path) -> None:
+    service = FakeService(tmp_path)
+    output = io.StringIO()
+
+    exit_code = main(
+        [
+            "articlegraph",
+            "query",
+            "neighbors",
+            "doc-1",
+            "--object-id",
+            "node-1",
+            "--object-kind",
+            "node",
+            "--max-depth",
+            "3",
+            "--max-hits",
+            "17",
+            "--json",
+        ],
+        service=service,
+        stdout=output,
+    )
+
+    assert exit_code == 0
+    request = service.calls[-1][1][0]
+    assert service.calls[-1][0] == "query_article_graph"
+    assert request.operation is QueryOperation.NEIGHBORS
+    assert request.object_ids == ("node-1",)
+    assert request.filters.object_kinds == (QueryObjectKind.NODE,)
+    assert request.budget.max_depth == 3
+    assert request.budget.max_hits == 17
 
 
 def test_provider_conflict_has_stable_machine_error(tmp_path) -> None:

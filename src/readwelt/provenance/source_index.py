@@ -17,8 +17,8 @@ from .source_index_candidates import (
     retrieve_exact_candidates,
     retrieve_lexical_candidates,
 )
+from .source_index_projection import SourceIndexDiagnostic as SourceIndexDiagnostic
 from .source_index_projection import (
-    SourceIndexDiagnostic,
     build_source_index_values,
     ordered_subset,
     ranges_for_units,

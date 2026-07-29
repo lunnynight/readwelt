@@ -138,3 +138,15 @@ class FakeService:
             "items": [{"node_id": "node-1"}],
             "next_cursor": None,
         }
+
+    def query_article_graph(self, request: Any) -> dict[str, Any]:
+        self.calls.append(("query_article_graph", (request,), {}))
+        return {
+            "schema_version": "readwelt.articlegraph-query-page.v1",
+            "document_id": request.document_id,
+            "operation": request.operation.value,
+            "hits": [],
+            "receipt": {
+                "returned_object_ids": [],
+            },
+        }

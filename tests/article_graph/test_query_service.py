@@ -12,11 +12,60 @@ from readwelt.article_graph import (
     LocatorPrecision,
     QueryBudget,
     QueryErrorCode,
+    QueryFilter,
+    QueryObjectKind,
     QueryOperation,
     QueryTruncationReason,
 )
 from readwelt.provenance import SourceIndex
 from tests.provenance.test_source_index import _build
+
+
+def test_search_returns_deterministic_source_first_matches(tmp_path: Path) -> None:
+    build = _build(tmp_path)
+    service = ArticleGraphQueryService(build.graph, build.source_index, build.unitization)
+    request = ArticleGraphQueryRequest(
+        document_id=build.unitization.units[0].document_id,
+        operation=QueryOperation.SEARCH,
+        query="revision",
+        budget=QueryBudget(max_hits=100),
+    )
+
+    first = service.search(request)
+    repeated = service.search(request)
+
+    assert first == repeated
+    assert first.hits
+    assert first.receipt.operation is QueryOperation.SEARCH
+    assert all(hit.evidence for hit in first.hits)
+
+
+def test_search_applies_object_and_page_filters_before_paging(tmp_path: Path) -> None:
+    build = _build(tmp_path)
+    service = ArticleGraphQueryService(build.graph, build.source_index, build.unitization)
+    page = service.search(
+        ArticleGraphQueryRequest(
+            document_id=build.unitization.units[0].document_id,
+            operation=QueryOperation.SEARCH,
+            query="revision",
+            filters=QueryFilter(
+                object_kinds=(QueryObjectKind.SOURCE_UNIT,),
+                page_start=2,
+                page_end=2,
+            ),
+            budget=QueryBudget(max_hits=100),
+        )
+    )
+
+    assert page.hits
+    assert all(hit.object_kind is QueryObjectKind.SOURCE_UNIT for hit in page.hits)
+    assert all(
+        locator.page == 2
+        for hit in page.hits
+        for evidence in hit.evidence
+        for locator in evidence.locators
+        if locator.page is not None
+    )
 
 
 def test_locate_returns_truthful_source_precision_and_receipt(tmp_path: Path) -> None:
@@ -182,6 +231,7 @@ def test_continuation_is_stable_and_bound_to_normalized_query(tmp_path: Path) ->
 
     first = service.locate(base)
     assert first.continuation is not None
+    assert len(first.continuation) < 2_048
     second = service.locate(base.model_copy(update={"continuation": first.continuation}))
 
     assert set(first.receipt.returned_object_ids).isdisjoint(second.receipt.returned_object_ids)

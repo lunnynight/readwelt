@@ -12,6 +12,7 @@ from .models import ArticleGraph
 from .query_continuation import QueryContinuationCodec
 from .query_errors import fail_query
 from .query_evidence import QueryEvidenceProjector
+from .query_filtering import QueryCandidateFilter
 from .query_models import (
     ArticleGraphQueryRequest,
     QueryErrorCode,
@@ -33,6 +34,7 @@ class QueryResultAssembler:
     ) -> None:
         self._graph = graph
         self._evidence = QueryEvidenceProjector(graph, source_index, unitization)
+        self._filter = QueryCandidateFilter(graph, source_index)
         self._continuation = QueryContinuationCodec(graph)
 
     @property
@@ -46,6 +48,7 @@ class QueryResultAssembler:
         *,
         relation_paths: Mapping[str, tuple[RelationHop, ...]] | None = None,
     ) -> QueryPage:
+        candidates = self._filter.apply(candidates, request.filters)
         query_digest = self._continuation.normalized_query_digest(request)
         start = self._continuation.offset(request, candidates, query_digest)
         hits: list[QueryHit] = []

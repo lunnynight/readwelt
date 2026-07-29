@@ -51,6 +51,7 @@ from readwelt.token_budget import DEFAULT_TOKEN_COUNTER
 from .provider_request_validation import validate_final_provider_request
 from .provider_runtime import AuditedCandidateProvider, ResolvingCandidateProvider
 from .run_store import ApplicationRunStore
+from .stage_query_bootstrap import StageQueryBootstrap, build_stage_query_bootstrap
 
 
 class ReadExecutionHost(Protocol):
@@ -117,6 +118,7 @@ async def execute_read(
     }
     stage_evidence_packets: dict[ReadingStage, EvidencePacket] = {}
     stage_view_refs: dict[ReadingStage, ArtifactRef] = {}
+    stage_query_bootstraps: dict[ReadingStage, StageQueryBootstrap] = {}
     evidence = cast(EvidencePacket, semantic_packet.to_stage_packet(run_id))
     stage_evidence_packets[ReadingStage.MAINLINE] = evidence
     initial_artifacts = service._run_store.load_stage_artifacts(run_id)
@@ -190,6 +192,22 @@ async def execute_read(
             targeted_anchor_ids = navigation.targeted_anchor_ids
             rescue_level = navigation.rescue_level
         stage_evidence = stage_evidence_packets.get(stage, evidence)
+        bootstrap = None
+        query_text = " ".join(
+            (
+                *stage_evidence.retrieval_queries,
+                *(anchor.exact_text for anchor in stage_evidence.anchors[:2]),
+            )
+        ).strip()
+        if query_text:
+            bootstrap = build_stage_query_bootstrap(
+                graph_build,
+                stage,
+                document_id=snapshot.document_id,
+                query_text=query_text,
+            )
+            stage_query_bootstraps[stage] = bootstrap
+            service._run_store.append_query_receipt(run_id, stage, bootstrap.page.receipt)
         view_hard_budget = (
             navigation.stage_view_hard_serialized_token_budget
             if navigation is not None
@@ -220,6 +238,12 @@ async def execute_read(
                         tuple(anchor.anchor_id for anchor in locator_packet.anchors)
                         if locator_packet is not None
                         else None
+                    ),
+                    critical_range_ids=(
+                        bootstrap.critical_range_ids if bootstrap is not None else ()
+                    ),
+                    critical_element_ids=(
+                        bootstrap.critical_element_ids if bootstrap is not None else ()
                     ),
                     targeted_anchor_ids=targeted_anchor_ids,
                     rescue_level=cast(Any, rescue_level),
@@ -302,6 +326,7 @@ async def execute_read(
         navigation = service._run_store.load_stage_navigation(run_id, stage)
         if navigation is None:
             return {}
+        query_receipts = service._run_store.load_query_receipts(run_id, stage)
         return {
             "stage_page_index": navigation.page_index,
             "stage_view_digest": (stage_view.content_digest if stage_view is not None else None),
@@ -318,6 +343,10 @@ async def execute_read(
             "previous_request_digest": navigation.latest_request_digest,
             "rescue_level": navigation.rescue_level,
             "targeted_anchor_ids": list(navigation.targeted_anchor_ids),
+            "articlegraph_query_receipt_ids": [
+                receipt.receipt_id for receipt in query_receipts
+            ],
+            "articlegraph_query_primary": stage in stage_query_bootstraps,
         }
 
     def validate_final_request(
