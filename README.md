@@ -184,11 +184,15 @@ Xberg `1.0.0rc38` 负责正文抽取；源文件不会被原地修改。对于 E
 版本进入 snapshot identity，因此结构修复会生成新 snapshot，不会被同正文 digest
 的旧缓存静默覆盖。所有运行状态默认保存在项目相对目录。
 
-## Agent 接管与 Skill + CLI
+## Agent 接管与可选 CLI
 
-Readwelt 是按需执行的本地工具，不再提供 stdio MCP server。Codex、Claude Code、
-Gemini 等宿主通过仓库中的 `skills/readwelt` 判断何时进入深度阅读，再用短进程 CLI
-驱动同一个 `readwelt.agent-turn.v1` 协议：
+Readwelt 的默认入口是纯 Skill：宿主可直接读取用户提供的文章并执行 `skills/readwelt`
+中的阅读方法，不需要 Readwelt CLI、专用运行时或 MCP 服务。CLI 是可选辅助工具，适用于
+需要本地解析、结构化阶段记录或 ArticleGraph 查询的工作流；只有实际调用并留存结果的
+辅助功能，才能作为该次阅读的保障。
+
+使用可选 CLI 时，Codex、Claude Code、Gemini 等宿主通过 Skill 决定何时进入深度阅读，
+再由短进程 CLI 驱动 `readwelt.agent-turn.v1` 协议：
 
 ```text
 agent-start
@@ -417,5 +421,23 @@ uv run mypy
 cargo test --workspace
 ```
 
-Readwelt 当前版本为 `0.1.0`。它优先把“忠实理解文章，再恢复思想结构”这套方法做成
-可靠的本地运行时，让未来的界面、Agent 和学习工具读取同一份理解结果。
+Readwelt 当前版本为 `0.1.0`。默认使用纯 Skill 阅读；本地运行时和 CLI 是可选辅助能力，
+不构成每次阅读都已执行的保障。语义评测由 `evals/readwelt/grader.md` 与盲比对 rubric
+辅助；`check_quotes.py` 只核对字面片段，不证明解释正确。过程声明按可用记录评估；纯
+Skill 模式不承诺硬性阻止模型输出无依据的过程声明。
+
+ArticleGraph 的程序评分将旧的“comprehension”结果改名为 `comprehension_lexical_screen`，
+只作词汇覆盖诊断，不是语义理解结论，也不再纳入生成的新预注册中的主要发布指标。已冻结的
+`benchmarks/articlegraph_agent_reading/d1/preregistration.json` 保持原样作为历史记录，不代表
+当前评分定义。
+
+可选引文核对命令：
+
+```powershell
+uv run python evals/readwelt/check_quotes.py source.md report.md
+```
+
+它只核对报告中的弯引号片段是否在所给来源中逐字出现：返回码 `0` 表示全部匹配，
+`1` 表示至少一处未匹配，`2` 表示未找到显式引文。字面匹配不证明引文归属或解释成立；
+标点差异也可能导致未匹配。grader、comparator 和测试用例只用于开发评估，不会自动参与
+每次 Skill 阅读。

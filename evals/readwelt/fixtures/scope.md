@@ -1,0 +1,1 @@
+At time T1 the report says the organization had no local branches. At time T2, after expansion, it says local branches existed.

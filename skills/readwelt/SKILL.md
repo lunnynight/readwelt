@@ -100,19 +100,37 @@ between the title, opening, explicit turns, and ending:
    well? A claim that explains only one section is supporting, not controlling. When the author
    explicitly revises the opening frame, give that later framing its argumentative weight rather
    than averaging the two frames into a neutral summary.
-5. **Material hierarchy:** classify passages as central claim, support, illustration, side thread,
-   or unresolved concern. Give examples only the weight their argumentative job earns; vividness,
-   length, and count do not make them central.
+5. **Material hierarchy:** provisionally classify passages as central claim, support, illustration,
+   side thread, or unresolved concern. This classification is a reading aid, not a filter: material
+   that resists the provisional claim must remain visible and may require revising that claim.
 
 Write a one- or two-sentence provisional reading and anchor it to the pivot and ending. For essays
 without an explicit reversal, identify the passage that most strongly organizes the other claims;
 do not invent a pivot. For interviews or genuinely multi-voice material, allow multiple unresolved
 lines rather than forcing one thesis.
 
-**Gate:** before continuing, state (a) the opening expectation, (b) the pivot or organizing passage,
-(c) the controlling claim, and (d) one plausible alternative reading that the text does not support
-as well. If these cannot be located in the text, continue reading instead of substituting a topic
-summary.
+**Gate:** before continuing, state the opening expectation, pivot or organizing passage, and
+provisional controlling claim (or justified parallel threads). Offer a competing reading only when
+the text supports a real alternative; do not manufacture one to satisfy a template.
+
+### 1a. Preserve unresolved material before adding context
+
+Keep a compact evidence map (not hidden reasoning) with source locations for the provisional claim,
+its support, qualifications, exceptions, counterevidence, scope changes, and important passages it
+does not yet explain. Record these categories separately; do not demote inconvenient material to a
+side thread merely to make the account smoother. Revisit the provisional claim when the map exposes
+a conflict or unexplained passage.
+
+Before adding external background, compare related claims inside the text. For each apparent
+tension, identify both passages, state their speakers and conditions, compare their scope and
+strength, then assess whether the text reconciles them, leaves them unresolved, or does not provide
+enough evidence to decide. Different wording is not by itself a contradiction; missing explanation
+is not proof that no explanation exists. Do not force a tension where the passages address different
+speakers, times, conditions, or meanings.
+
+For interviews, map voices and topic shifts; preserve parallel lines without forcing one thesis.
+Every major report section must be traceable to the evidence map. Do not claim exhaustive
+verification merely because the source was attached or read.
 
 ### 2. Reconstruct the background line and text movement
 
@@ -159,7 +177,10 @@ Describe transitions, not merely topics. Explain how each major passage supports
 complicates, or distracts from the controlling claim. Preserve digressions and discontinuities where
 they matter; do not retrofit them into a tidy proof.
 
-### 4. Decompress what the article assumes
+Before elevating an example, state its job in this text: evidence for a claim, illustration,
+counterexample, analogy, qualification, or side thread. If its job is unclear, keep it secondary
+rather than promoting it to the article's thesis. Conversely, do not discard a passage that resists
+the provisional thesis; record it as a counterpoint or unresolved item and reconsider the thesis.
 
 Only after phases 1–3 are stable, identify the unstated knowledge needed to understand the
 article's claims in their own setting. Treat familiar words as possible compression points:
@@ -278,6 +299,12 @@ Every important judgment needs a lightweight source reference:
 If the source has no stable locations, assign temporary paragraph references such as `[P12]` while
 reading. Do not quote long passages merely to create an appearance of rigor.
 
+Process statements are not part of the reading report by default. Do not invent drafts, corrections,
+messages, tool use, searches, or checks. If process information is relevant, state only what the
+available records show, and limit the claim to those records. Missing records mean “unverified,”
+not “did not happen” and not “proved false.” Pure Skill instructions reduce this risk but cannot
+guarantee that a model will obey them; evaluate outputs for unsupported process claims.
+
 ## Report format
 
 
@@ -339,29 +366,33 @@ change matters, make the hidden steps, capabilities, roles, constraints, and rel
 snapshot concrete. Follow the article's own evidence and distinctions; don't apply a fixed domain
 template or import present-day conditions.
 
-The report may be shorter or longer according to the article. Prefer a readable main explanation
-plus detailed evidence over a rigid word count. The section on the author's problem world must
-explain the chain from conditions to question to article choices; it must not become a biography.
+The listed headings are a coverage contract, not a rigid template. Use them when they fit; for
+multi-voice interviews, rename or combine sections while preserving the required work: source
+limits, text movement, needed background, problem world where supported, claim boundaries,
+transfer conditions, and unresolved questions. If a section has no source-supported content,
+omit it or mark the limit briefly; never fill it with generic material. Do not omit a required
+dimension merely because the source is long.
 
-End with 3–7 concrete follow-up questions or reading gaps when they exist. Do not invent questions
-just to fill a quota.
+Before returning, check coverage against the evidence map, not a vague sense of having read the
+whole source. For long material, name the covered ranges and any gaps. Do not assert that every
+section or detail was checked unless the map supports that assertion.
 
 ## Final self-check
 
-Before returning the report, check:
+Before returning, verify these acceptance gates:
 
-1. Did I map the source layers and their transformation limits before interpreting a multi-source package?
-2. Can an unfamiliar reader retell the concrete situation, problem pressure, question formation, and route to the claims from section 1 alone?
-3. Does section 1 explain why later ideas arise, rather than list themes or restate the thesis?
-4. Did I distinguish the author's claim from my interpretation?
-5. Can every important judgment be located in the text or labelled as external/inferred?
-6. Did I unpack the specific activities, concepts, capabilities, roles, and constraints the text relies on, rather than importing a generic domain template?
-7. Where timing changes the meaning, did I reconstruct the source's relevant historical snapshot and avoid silently applying present-day conditions?
-8. Did each background item explain a real difficulty in understanding the text?
-9. Did I reconstruct the author's problem world rather than biography or private psychology?
-10. Did I preserve competing explanations, discontinuities, and unresolved gaps?
-11. Did I test the conditions and failure modes before proposing transfer?
-12. Did I disclose unread or unavailable sections?
-13. Does this report help a human return to the text instead of pretending to replace it?
-14. Does each paragraph make one clear move, with concrete subjects and references a reader can follow without rereading?
-15. Read the report aloud: where wording sounds translated, abstract, or tangled, rewrite it before returning.
+1. **Reading:** State the opening expectation, pivot or organizing passage, and provisional
+   controlling claim (or justified parallel threads). Do not force a competing reading; include one
+   only when source evidence supports it.
+2. **Route:** The reader can follow how the situation creates a question and how major moves answer,
+   qualify, or complicate it.
+3. **Coverage and evidence:** Compare the report with the evidence map; disclose source limits and
+   gaps. Important judgments distinguish quotation, inference, and outside context.
+4. **Counterpoint check:** Account for important qualifications, exceptions, contrary statements,
+   and passages unexplained by the provisional claim. For apparent contradictions, compare the
+   exact claims, speaker, scope, conditions, and strength; distinguish contradiction, qualification,
+   different scope, and unresolved tension. Do not require a contradiction where none is supported.
+5. **Context and boundaries:** Include useful background; explain the problem world and test limits
+   or transfer only where supported. Preserve uncertainty and discontinuities.
+6. **Integrity and readability:** Do not overstate process records. Each paragraph makes one clear
+   move in concrete language; rewrite tangled wording.

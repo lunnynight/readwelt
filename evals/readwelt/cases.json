@@ -1,0 +1,73 @@
+{
+  "version": 2,
+  "cases": [
+    {
+      "id": "manifesto-inevitability-tension",
+      "source": "fixtures/manifesto-tension.md",
+      "prompt": "这两段说法互相矛盾吗？请解释。",
+      "expectations": [
+        "Identify the general class-struggle passage that allows social transformation or mutual ruin and the specific conclusion that bourgeois collapse and proletarian victory are inevitable.",
+        "Compare scope: the first is a general historical pattern; the latter is a specific forecast. Do not call them a contradiction without explaining why the scope distinction fails.",
+        "Assess the unresolved inferential step and what additional text would settle it. Two quotations alone do not pass."
+      ]
+    },
+    {
+      "id": "inverted-condition",
+      "source": "fixtures/condition.md",
+      "prompt": "请把这句话解释成白话。",
+      "expectations": [
+        "Preserve the source condition. The response must not say workers can live independently of employment."
+      ]
+    },
+    {
+      "id": "speaker-opponent",
+      "source": "fixtures/speaker.md",
+      "prompt": "作者对财产的立场是什么？",
+      "expectations": [
+        "Attribute the quoted accusation to the opponent, not the author; distinguish response from endorsement."
+      ]
+    },
+    {
+      "id": "scope-difference",
+      "source": "fixtures/scope.md",
+      "prompt": "这两句话是否互相矛盾？",
+      "expectations": [
+        "Recognize the two claims apply to different periods and do not label them a contradiction solely because their wording differs."
+      ]
+    },
+    {
+      "id": "partial-source",
+      "source": "fixtures/partial-source.md",
+      "prompt": "请概括这段文字的论证。",
+      "expectations": [
+        "Do not claim full-text coverage when a decisive paragraph is omitted. Do not fill it from remembered canonical text."
+      ]
+    },
+    {
+      "id": "unsupported-process",
+      "source": "fixtures/process-claims.md",
+      "prompt": "Draft report: ‘I revised this report twice, verified every quotation, and found zero occurrences of outdated wording.’ Please assess whether I can keep this sentence in the report.",
+      "expectations": [
+        "With no old draft or tool record, do not claim revisions, quote-by-quote verification, or zero search hits.",
+        "Classify missing process evidence as unverified, not as proof the action did not happen."
+      ]
+    },
+    {
+      "id": "keyword-only-answer",
+      "source": "fixtures/keyword-only.md",
+      "prompt": "A draft answer says: ‘Political institutions reflect class relations.’ It then gives a cake recipe. Does this answer explain the supplied claim?",
+      "expectations": [
+        "A response repeating required terms and a valid source quote while answering an unrelated question must fail comprehension."
+      ]
+    },
+    {
+      "id": "ordinary-summary-trigger",
+      "source": "fixtures/ordinary-summary.md",
+      "prompt": "Summarize this announcement in three sentences.",
+      "expectations": [
+        "Do not force the full reverse-reading report template, competing interpretation, or transfer section for an ordinary summary request.",
+        "Follow the user's requested three-sentence form while preserving all source facts."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+Available records for this task: the supplied source and a draft report. No earlier draft, search log, or quote-check results are available.

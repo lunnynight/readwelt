@@ -12,7 +12,7 @@ def score_answers(document: dict[str, Any], final_answer: dict[str, Any]) -> dic
         if isinstance(item, dict)
     }
     anchors = {item["anchor_id"]: item for item in document["gold_anchors"]}
-    scores = {"location": 0.0, "citation": 0.0, "comprehension": 0.0}
+    scores = {"location": 0.0, "citation": 0.0, "comprehension_lexical_screen": 0.0}
     for task in document["tasks"]:
         answer = answers.get(task["task_id"], {})
         anchor = anchors[task["gold_anchor_id"]]
@@ -22,21 +22,23 @@ def score_answers(document: dict[str, Any], final_answer: dict[str, Any]) -> dic
         elif kind == "citation":
             quote = _normalized(str(answer.get("quote", "")))
             gold = _normalized(str(anchor["exact_text"]))
+            # Require the whole anchor; a short substring is not enough to
+            # count as a supported citation in this lexical benchmark.
             scores[kind] = float(
                 _page(answer) == int(anchor["page"])
-                and bool(quote)
-                and (quote in gold or gold in quote)
+                and bool(gold)
+                and gold in quote
             )
         elif kind == "comprehension":
             answer_text = _normalized(str(answer.get("answer", "")))
-            quote = _normalized(str(answer.get("quote", "")))
-            gold = _normalized(str(anchor["exact_text"]))
             terms = [str(item) for item in task["rubric"].get("required_terms", [])]
-            supported_judgment = bool(answer_text) and sum(
-                term in answer_text or term in quote for term in terms
+            lexical_match = bool(terms) and bool(answer_text) and sum(
+                term in answer_text for term in terms
             ) >= min(2, len(terms))
-            supported_quote = bool(quote) and (quote in gold or gold in quote)
-            scores[kind] = float(supported_judgment) + float(supported_quote)
+            # This deterministic diagnostic only checks vocabulary overlap.
+            # Citation scoring checks the anchor; semantic quality requires
+            # the separate human/model grader.
+            scores["comprehension_lexical_screen"] = float(lexical_match)
     return scores
 
 
