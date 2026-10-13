@@ -68,6 +68,18 @@
         "Do not force the full reverse-reading report template, competing interpretation, or transfer section for an ordinary summary request.",
         "Follow the user's requested three-sentence form while preserving all source facts."
       ]
+    },
+
+    {
+      "id": "theory-content-vs-purpose",
+      "source": "fixtures/theory-purpose.md",
+      "prompt": "请帮我读懂这段文字。",
+      "expectations": [
+        "Distinguish the object and linked theoretical claims from the method and practical purpose; the purpose of combating dogmatism cannot stand in for the theory's content.",
+        "Explain relationships among universality/particularity, principal contradiction/principal aspect, identity/struggle, and contradiction/antagonism; a list of terms alone fails.",
+        "Do not infer that every contradiction is antagonistic or that the cited purpose is the sole theoretical thesis.",
+        "Assess the report's top-level framing and final takeaway separately; later mentions of theory terms do not repair a purpose- or method-centered summary that materially demotes the theory."
+      ]
     }
   ]
 }
