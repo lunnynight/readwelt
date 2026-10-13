@@ -33,7 +33,7 @@ Return JSON in this shape:
     "B": {"verdict": "pass | needs_revision | fail", "findings": []}
   },
   "pairwise_preferences": {
-    "A_vs_B": "A | B | tie"
+    "A_vs_B": "A | B | tie | both_fail"
   },
   "overall": "A | B | tie | both_fail | inconclusive",
   "critical_errors": [],
