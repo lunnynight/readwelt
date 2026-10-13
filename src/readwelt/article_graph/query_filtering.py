@@ -17,12 +17,8 @@ class QueryCandidateFilter:
             SourceCandidateKind.CLAIM: QueryObjectKind.CLAIM,
         }
         self._relations = {edge.edge_id: edge.relation for edge in graph.edges}
-        self._statuses = {
-            node.node_id: node.epistemic_status.value for node in graph.nodes
-        }
-        self._statuses.update(
-            {edge.edge_id: edge.epistemic_status.value for edge in graph.edges}
-        )
+        self._statuses = {node.node_id: node.epistemic_status.value for node in graph.nodes}
+        self._statuses.update({edge.edge_id: edge.epistemic_status.value for edge in graph.edges})
         self._statuses.update(
             {claim.claim_id: claim.epistemic_status.value for claim in graph.claims}
         )

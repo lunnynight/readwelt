@@ -343,9 +343,7 @@ async def execute_read(
             "previous_request_digest": navigation.latest_request_digest,
             "rescue_level": navigation.rescue_level,
             "targeted_anchor_ids": list(navigation.targeted_anchor_ids),
-            "articlegraph_query_receipt_ids": [
-                receipt.receipt_id for receipt in query_receipts
-            ],
+            "articlegraph_query_receipt_ids": [receipt.receipt_id for receipt in query_receipts],
             "articlegraph_query_primary": stage in stage_query_bootstraps,
         }
 

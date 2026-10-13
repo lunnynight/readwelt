@@ -10,8 +10,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import fitz  # type: ignore[import-untyped]
-
 SCHEMA = "readwelt.articlegraph-agent-reading-manifest.v1"
 PREREGISTRATION_SCHEMA = "readwelt.articlegraph-agent-reading-preregistration.v1"
 DEFAULT_CATEGORIES = ("FOF与基金研究", "宏观量化与资产配置", "量化多因子选股")
@@ -203,6 +201,8 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
 
 def verify_manifest_sources(manifest: dict[str, Any]) -> None:
     """Replay immutable digests and exact page anchors against the source PDFs."""
+    import fitz
+
     validate_manifest(manifest)
     for document_entry in manifest["documents"]:
         path = Path(document_entry["source_path"])
@@ -235,6 +235,8 @@ def write_preregistration(corpus_root: Path, output: Path) -> tuple[Path, Path]:
 def _inventory(
     corpus_root: Path, categories: tuple[str, ...]
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    import fitz
+
     rows: list[dict[str, Any]] = []
     exclusions: list[dict[str, str]] = []
     seen: set[str] = set()

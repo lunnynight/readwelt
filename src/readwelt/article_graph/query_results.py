@@ -66,9 +66,7 @@ class QueryResultAssembler:
                 relation_path=(relation_paths or {}).get(candidate.object_id, ()),
             )
             added_characters = sum(len(item.exact_text or "") for item in hit.evidence)
-            added_bytes = sum(
-                len((item.exact_text or "").encode("utf-8")) for item in hit.evidence
-            )
+            added_bytes = sum(len((item.exact_text or "").encode("utf-8")) for item in hit.evidence)
             added_paths = len(hit.relation_path)
             potential_characters = evidence_characters + added_characters
             potential_bytes = source_bytes + added_bytes

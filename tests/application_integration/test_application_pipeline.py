@@ -169,10 +169,7 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
     assert sum(artifact.artifact_type == "stage_view" for artifact in run.artifacts) == 6
     assert sum(artifact.artifact_type == "stage_artifact" for artifact in run.artifacts) == 6
     assert (
-        sum(
-            artifact.artifact_type == "articlegraph_query_receipt"
-            for artifact in run.artifacts
-        )
+        sum(artifact.artifact_type == "articlegraph_query_receipt" for artifact in run.artifacts)
         == 6
     )
     graph_build_ref = next(
@@ -238,8 +235,7 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
     assert all(item.quality_gain_claimed is False for item in exposure)
     assert all(item.actual_inline_delta_tokens == 0 for item in exposure)
     assert all(
-        item.compatibility_adapter_estimated_tokens
-        == item.eager_stage_view_estimated_tokens
+        item.compatibility_adapter_estimated_tokens == item.eager_stage_view_estimated_tokens
         for item in exposure
     )
     assert all(

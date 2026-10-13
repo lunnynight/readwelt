@@ -76,9 +76,7 @@ def test_cli_and_python_use_equivalent_normalized_requests_and_ordering(tmp_path
     assert exit_code == 0
     cli_page = json.loads(output.getvalue())
     assert cli_page == python_page.to_dict()
-    assert cli_page["receipt"]["returned_object_ids"] == [
-        hit.object_id for hit in python_page.hits
-    ]
+    assert cli_page["receipt"]["returned_object_ids"] == [hit.object_id for hit in python_page.hits]
 
 
 def test_cli_query_failure_has_stable_machine_code(tmp_path: Path) -> None:

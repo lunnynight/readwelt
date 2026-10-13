@@ -329,9 +329,7 @@ def test_resource_budgets_truncate_with_explicit_reason(
         "max_source_bytes": sum(
             len((item.exact_text or "").encode("utf-8")) for item in first.evidence
         ),
-        "max_estimated_tokens": (
-            sum(len(item.exact_text or "") for item in first.evidence) + 3
-        )
+        "max_estimated_tokens": (sum(len(item.exact_text or "") for item in first.evidence) + 3)
         // 4,
     }
     values = QueryBudget(max_hits=500).to_dict()

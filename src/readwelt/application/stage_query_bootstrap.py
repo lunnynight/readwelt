@@ -50,10 +50,7 @@ def build_stage_query_bootstrap(
         )
     )
     locators = (
-        locator
-        for hit in page.hits
-        for evidence in hit.evidence
-        for locator in evidence.locators
+        locator for hit in page.hits for evidence in hit.evidence for locator in evidence.locators
     )
     range_ids: list[str] = []
     element_ids: list[str] = []

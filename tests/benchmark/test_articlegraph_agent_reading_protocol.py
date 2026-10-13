@@ -83,9 +83,7 @@ def _attach_receipt(record: dict[str, object], root: Path) -> None:
         }
     ]
     record["final_answer"] = {
-        "answers": [
-            {"task_id": "t1", "answer": "x", "receipt_ids": ["receipt-1"]}
-        ]
+        "answers": [{"task_id": "t1", "answer": "x", "receipt_ids": ["receipt-1"]}]
     }
 
 
@@ -138,9 +136,7 @@ def test_report_keeps_product_and_infrastructure_metrics_separate(tmp_path: Path
     _attach_receipt(treatment, tmp_path)
     treatment["scores"] = {"location": 1.0, "citation": 1.0, "comprehension": 1.5}
     baseline["scores"] = {"location": 0.0, "citation": 0.5, "comprehension": 1.0}
-    report = build_report(
-        [{"baseline": baseline, "treatment": treatment}], artifact_root=tmp_path
-    )
+    report = build_report([{"baseline": baseline, "treatment": treatment}], artifact_root=tmp_path)
     assert report["pair_validity"]["rate"] == 1.0
     assert report["quality"]["location"]["absolute_gain"] == 1.0
     assert report["tokens"]["treatment"]["input_tokens"] == 60.0

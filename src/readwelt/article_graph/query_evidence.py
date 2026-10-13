@@ -163,9 +163,7 @@ class QueryEvidenceProjector:
 
     def _graph_object(self, object_id: str) -> ArticleNode | ArticleEdge | Claim:
         value = (
-            self._nodes.get(object_id)
-            or self._edges.get(object_id)
-            or self._claims.get(object_id)
+            self._nodes.get(object_id) or self._edges.get(object_id) or self._claims.get(object_id)
         )
         if value is None:
             fail_query(QueryErrorCode.OBJECT_NOT_FOUND, f"graph object not found: {object_id}")
