@@ -12,8 +12,8 @@ For each report, record evidence for:
 3. distinction among substantive content, method, and purpose;
 4. whole-text representativeness, coverage, qualifications, scope changes, and unresolved tensions;
 5. source support, speaker/negation/condition accuracy, uncertainty;
-6. reader-facing clarity.
-7. Explicit framing hierarchy: quote the title, opening summary, stated central line, and final takeaway. Judge whether they place substantive claims at the center or demote them beneath purpose/method. Later term mentions do not repair an unrepresentative top-level framing.
+6. reader-facing clarity;
+7. explicit framing hierarchy: quote the title, opening summary, stated central line, and final takeaway. Judge whether these place substantive claims at the center or demote them beneath purpose/method. Later term mentions do not repair an unrepresentative top-level framing.
 
 A supported claim is not automatically representative of the whole. In particular, do not let a stated purpose, method, opening frame, or closing takeaway substitute for the text's substantive claims. A list of correct topics without explaining their relations is incomplete. Do not require one central sentence when linked claims better represent the source.
 
@@ -21,7 +21,25 @@ For every apparent contradiction, compare both source passages, scope, speaker, 
 
 Process claims are assessed only against preserved execution records. Mark `unverified` if unavailable; do not infer falsehood. Do not let a process claim improve quality scores.
 
-## Decision
-Return per-dimension findings and a verdict: `A`, `B`, `tie`, or `both_fail`; for 3+ reports, give individual adequacy verdicts plus pairwise preference. Do not calculate a content/style average. A report with an inverted condition, wrong speaker, unsupported or materially unrepresentative central synthesis, or omitted decisive proposition cannot win solely through prose or formatting. A report may be inadequate even when another report is worse. Tie when differences are not supported by decisive evidence. `both_fail` is allowed.
+## Decision and output
+Do not calculate a content/style average. A report with an inverted condition, wrong speaker, unsupported or materially unrepresentative synthesis, or omitted decisive proposition cannot win solely through prose or formatting. A report may be inadequate even when another report is worse. Tie when differences are not supported by decisive evidence.
 
-Output JSON: `verdict`, `reasoning`, `dimensions`, `critical_errors`, `process_claims`, and `rubric_gaps`. Cite exact passages in each report and the source.
+Return JSON in this shape:
+
+```json
+{
+  "individual_assessments": {
+    "A": {"verdict": "pass | needs_revision | fail", "findings": []},
+    "B": {"verdict": "pass | needs_revision | fail", "findings": []}
+  },
+  "pairwise_preferences": {
+    "A_vs_B": "A | B | tie"
+  },
+  "overall": "A | B | tie | both_fail | inconclusive",
+  "critical_errors": [],
+  "process_claims": [],
+  "rubric_gaps": []
+}
+```
+
+Include one `individual_assessments` entry per report and every unordered pair in `pairwise_preferences`. `overall` names a winner only when it is adequately supported; use `both_fail` when all reports fail and `inconclusive` when no overall ordering is justified. Cite exact passages in each report and the source.

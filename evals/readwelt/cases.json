@@ -80,6 +80,16 @@
         "Do not infer that every contradiction is antagonistic or that the cited purpose is the sole theoretical thesis.",
         "Assess the report's top-level framing and final takeaway separately; later mentions of theory terms do not repair a purpose- or method-centered summary that materially demotes the theory."
       ]
+    },
+
+    {
+      "id": "purpose-centered-report",
+      "source": "fixtures/theory-purpose.md",
+      "prompt": "Draft report: The main thesis is that readers should combat dogmatism by concrete analysis. The sections on universality/particularity, principal contradiction/aspect, identity/struggle, and antagonism are examples supporting that method. Assess whether this draft faithfully represents the source.",
+      "expectations": [
+        "Reject or require revision of the draft's framing: a purpose/method-centered thesis cannot demote the source's theory of contradiction and its linked propositions to mere examples.",
+        "Do not pass the draft merely because it repeats the source's correct topic terms; assess the hierarchy and relations in its top-level summary."
+      ]
     }
   ]
 }
