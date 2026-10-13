@@ -22,6 +22,24 @@ def test_health_and_run_status(tmp_path) -> None:
     assert status.json()["run_id"] == "run-1"
 
 
+def test_http_article_graph_page_is_public_and_read_only(tmp_path) -> None:
+    service = FakeService(tmp_path)
+    client = testclient.TestClient(create_app(service, project_root=tmp_path))
+
+    response = client.get(
+        "/v1/documents/doc-1/article-graph/nodes",
+        params={"limit": 7},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == "readwelt.article-graph-page.v1"
+    assert service.calls[-1] == (
+        "get_article_graph_page",
+        ("doc-1",),
+        {"collection": "nodes", "limit": 7, "cursor": None},
+    )
+
+
 def test_api_reports_provider_conflict(tmp_path) -> None:
     client = testclient.TestClient(create_app(FakeService(tmp_path), project_root=tmp_path))
 

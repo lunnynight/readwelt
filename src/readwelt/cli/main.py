@@ -16,6 +16,14 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Never, TextIO
 
+from readwelt.article_graph import (
+    ArticleGraphQueryFailure,
+    ArticleGraphQueryRequest,
+    QueryBudget,
+    QueryFilter,
+    QueryObjectKind,
+    QueryOperation,
+)
 from readwelt.cli.locking import ProjectBusyError, project_mutation_lock
 from readwelt.providers.contracts import (
     ProviderContractError,
@@ -119,6 +127,55 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_common_options(artifact_get)
 
+    graph_page = subparsers.add_parser(
+        "article-graph-page",
+        help="Return one stable page from a prepared ArticleGraph collection",
+    )
+    graph_page.add_argument("document_id")
+    graph_page.add_argument(
+        "--collection",
+        choices=("nodes", "edges", "claims", "mentions"),
+        default="nodes",
+    )
+    graph_page.add_argument("--limit", type=int, default=100)
+    graph_page.add_argument("--cursor")
+    _add_common_options(graph_page)
+
+    articlegraph = subparsers.add_parser(
+        "articlegraph",
+        help="Query prepared ArticleGraph evidence through one stable command family",
+    )
+    articlegraph_actions = articlegraph.add_subparsers(
+        dest="articlegraph_action",
+        required=True,
+    )
+    graph_query = articlegraph_actions.add_parser(
+        "query",
+        help="Run a source-first ArticleGraph operation",
+    )
+    graph_query.add_argument("operation", choices=tuple(item.value for item in QueryOperation))
+    graph_query.add_argument("document_id")
+    graph_query.add_argument("--query")
+    graph_query.add_argument("--object-id", action="append", default=[])
+    graph_query.add_argument("--consumer-stage")
+    graph_query.add_argument("--task-intent")
+    graph_query.add_argument("--object-kind", action="append", default=[])
+    graph_query.add_argument("--source-unit-id", action="append", default=[])
+    graph_query.add_argument("--source-element-id", action="append", default=[])
+    graph_query.add_argument("--relation-kind", action="append", default=[])
+    graph_query.add_argument("--epistemic-status", action="append", default=[])
+    graph_query.add_argument("--page-start", type=int)
+    graph_query.add_argument("--page-end", type=int)
+    graph_query.add_argument("--max-hits", type=int, default=50)
+    graph_query.add_argument("--max-depth", type=int, default=2)
+    graph_query.add_argument("--max-visited-objects", type=int, default=2_000)
+    graph_query.add_argument("--max-relation-paths", type=int, default=100)
+    graph_query.add_argument("--max-evidence-characters", type=int, default=32_768)
+    graph_query.add_argument("--max-source-bytes", type=int, default=65_536)
+    graph_query.add_argument("--max-estimated-tokens", type=int, default=8_192)
+    graph_query.add_argument("--continuation")
+    _add_common_options(graph_query)
+
     doctor = subparsers.add_parser(
         "doctor",
         help="Check the short-lived CLI environment without starting a provider",
@@ -215,6 +272,19 @@ async def execute(
             result.pop("content", None)
             result.pop("content_encoding", None)
         return {"schema_version": "readwelt.artifact.v1", **result}
+    if args.command == "article-graph-page":
+        return await invoke(
+            service,
+            "get_article_graph_page",
+            args.document_id,
+            collection=args.collection,
+            limit=args.limit,
+            cursor=args.cursor,
+        )
+    if args.command == "articlegraph":
+        if args.articlegraph_action != "query":
+            raise AssertionError(f"unsupported ArticleGraph action: {args.articlegraph_action}")
+        return await invoke(service, "query_article_graph", _articlegraph_request(args))
     if args.command == "read":
         selection = ProviderSelection.build(
             mode=args.provider_mode,
@@ -287,6 +357,7 @@ def main(
                 print(_human_output(args.command, projected), file=out)
         return 0
     except (
+        ArticleGraphQueryFailure,
         OSError,
         ProjectBusyError,
         ProviderContractError,
@@ -300,6 +371,37 @@ def main(
         else:
             print(f"{code}: {exc}", file=err)
         return 2
+
+
+def _articlegraph_request(args: argparse.Namespace) -> ArticleGraphQueryRequest:
+    """Normalize CLI values into the same immutable request accepted by Python callers."""
+    return ArticleGraphQueryRequest(
+        document_id=args.document_id,
+        operation=QueryOperation(args.operation),
+        query=args.query,
+        object_ids=tuple(args.object_id),
+        consumer_stage=args.consumer_stage,
+        task_intent=args.task_intent,
+        filters=QueryFilter(
+            object_kinds=tuple(QueryObjectKind(item) for item in args.object_kind),
+            source_unit_ids=tuple(args.source_unit_id),
+            source_element_ids=tuple(args.source_element_id),
+            relation_kinds=tuple(args.relation_kind),
+            epistemic_statuses=tuple(args.epistemic_status),
+            page_start=args.page_start,
+            page_end=args.page_end,
+        ),
+        budget=QueryBudget(
+            max_hits=args.max_hits,
+            max_depth=args.max_depth,
+            max_visited_objects=args.max_visited_objects,
+            max_relation_paths=args.max_relation_paths,
+            max_evidence_characters=args.max_evidence_characters,
+            max_source_bytes=args.max_source_bytes,
+            max_estimated_tokens=args.max_estimated_tokens,
+        ),
+        continuation=args.continuation,
+    )
 
 
 _MUTATING_COMMANDS = frozenset(

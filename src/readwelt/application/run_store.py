@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from readwelt.article_graph import QueryReceipt
 from readwelt.domain import (
     ArtifactRef,
     ReadingRun,
@@ -23,6 +24,9 @@ from .provider_invocations import (
 from .provider_invocations import (
     finish_provider_invocation as _finish_provider_invocation,
 )
+from .run_query_receipts import QUERY_RECEIPTS_KEY
+from .run_query_receipts import append_query_receipt as _append_query_receipt
+from .run_query_receipts import load_query_receipts as _load_query_receipts
 from .run_store_codec import (
     StageNavigationState,
     run_mapping,
@@ -71,10 +75,11 @@ class ApplicationRunStore:
             _PROVISIONAL_STAGE_RECORDS: [],
             _PROVIDER_INVOCATIONS: [],
             _STAGE_NAVIGATION: {},
+            QUERY_RECEIPTS_KEY: [],
         }
         if path.exists():
             existing = self._manifests.read(path)
-            preserved = {key: existing.get(key, []) for key in preserved}
+            preserved = {key: existing.get(key, default) for key, default in preserved.items()}
         self._manifests.write(
             path,
             {
@@ -86,6 +91,35 @@ class ApplicationRunStore:
                 "hard_serialized_token_budget": hard_serialized_token_budget,
                 **preserved,
             },
+        )
+
+    def append_query_receipt(
+        self,
+        run_id: str,
+        stage: ReadingStage,
+        receipt: QueryReceipt,
+    ) -> ArtifactRef:
+        """Persist one immutable stage-scoped query receipt and index it in the run."""
+        return _append_query_receipt(
+            self._layout,
+            self._artifacts,
+            self._manifests,
+            run_id,
+            stage,
+            receipt,
+        )
+
+    def load_query_receipts(
+        self,
+        run_id: str,
+        stage: ReadingStage | None = None,
+    ) -> tuple[QueryReceipt, ...]:
+        return _load_query_receipts(
+            self._layout,
+            self._artifacts,
+            self._manifests,
+            run_id,
+            stage,
         )
 
     def append_stage_artifact(self, run_id: str, artifact: StageArtifact) -> ArtifactRef:

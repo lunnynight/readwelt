@@ -12,6 +12,11 @@ from readwelt.article_ir import UnitizationResult
 from readwelt.semantic.tokenization import tokenize
 
 from .ledger import ProvenanceLedger
+from .source_index_candidates import (
+    SourceIndexCandidate,
+    retrieve_exact_candidates,
+    retrieve_lexical_candidates,
+)
 from .source_index_projection import SourceIndexDiagnostic as SourceIndexDiagnostic
 from .source_index_projection import (
     build_source_index_values,
@@ -263,6 +268,15 @@ class SourceIndex:
             unit_ids=lookup.unit_ids,
             element_ids=element_ids,
         )
+
+    def retrieve_exact_candidates(
+        self,
+        identities: Iterable[str],
+    ) -> tuple[SourceIndexCandidate, ...]:
+        return retrieve_exact_candidates(self, identities)
+
+    def retrieve_lexical_candidates(self, query: str) -> tuple[SourceIndexCandidate, ...]:
+        return retrieve_lexical_candidates(self, query)
 
     def neighborhood(self, unit_id: str) -> SourceNeighborhood:
         if unit_id not in frozenset(self.source_unit_ids):

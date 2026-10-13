@@ -46,6 +46,7 @@ from readwelt.semantic import (
 from readwelt.stage_views import StageViewProjector
 from readwelt.storage import ArtifactStore, EventLog, ManifestStore, ProjectLayout
 
+from .article_graph_facade import ArticleGraphApplicationMixin
 from .project_artifacts import get_artifact as _get_artifact
 from .project_artifacts import prepare_document as _prepare_document
 from .project_artifacts import prepare_snapshot as _prepare_snapshot_impl
@@ -71,7 +72,7 @@ def _run_sync[T](operation: Coroutine[object, object, T]) -> T:
     raise RuntimeError("a running event loop was detected; use the corresponding async method")
 
 
-class ReadweltApplicationService:
+class ReadweltApplicationService(ArticleGraphApplicationMixin):
     def __init__(
         self,
         project: str | Path = ".readwelt",

@@ -232,6 +232,8 @@ Get-Content .\candidate.json -Raw |
   uv run readwelt agent-submit run_... - --agent-name codex --model host-model `
     --project C:\reading\.readwelt --json
 uv run readwelt artifact-get sha256:... --content --project C:\reading\.readwelt --json
+uv run readwelt article-graph-page document_... --collection nodes --limit 100 `
+  --project C:\reading\.readwelt --json
 ```
 
 每条命令完成后都会退出，不保留 Readwelt server。运行在当前阶段等待时，可由另一
@@ -271,6 +273,12 @@ bounded/paged StageView provider envelope
 冲突和双向来源索引，让六阶段在硬序列化预算内分页读取，并能从 Provider 实际看到的
 材料回到 Source Plane。ArticleGraph 对象只是机器定位候选；阶段结论可以引用它们，
 但不能回写成 source fact。
+
+已 prepare 的 ArticleGraph 也可通过 CLI 或
+`GET /v1/documents/{document_id}/article-graph/{collection}` 直接分页读取。
+`collection` 支持 `nodes`、`edges`、`claims`、`mentions`；响应中的不透明
+`next_cursor` 绑定 document、collection 和 graph digest，图版本变化或跨集合复用时会
+明确拒绝，最后一页返回 `null`。
 
 原始扫描 PDF 即使没有 OCR 文本也会保留为可寻址 source root；这不等于已经恢复文字、
 版面或页几何。Xberg 当前实测以正文抽取为主，未暴露所需结构。可选

@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from readwelt.application import ReadweltApplicationService
+from readwelt.application.stage_context_exposure import measure_stage_context_exposure
 from readwelt.domain import ExecutionStatus, ReadingStage
 from readwelt.providers import (
     ProviderContractError,
@@ -158,6 +159,7 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
         "article_graph_source_index",
         "article_graph",
         "article_graph_build",
+        "articlegraph_query_receipt",
         "stage_view",
         "stage_artifact",
         "reading_bundle",
@@ -166,6 +168,10 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
     assert sum(artifact.artifact_type == "graph_extraction" for artifact in run.artifacts) == 2
     assert sum(artifact.artifact_type == "stage_view" for artifact in run.artifacts) == 6
     assert sum(artifact.artifact_type == "stage_artifact" for artifact in run.artifacts) == 6
+    assert (
+        sum(artifact.artifact_type == "articlegraph_query_receipt" for artifact in run.artifacts)
+        == 6
+    )
     graph_build_ref = next(
         artifact for artifact in run.artifacts if artifact.artifact_type == "article_graph_build"
     )
@@ -206,11 +212,32 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
         request.evidence_packet["stage_view"]["stage"] == request.stage
         for request in provider.requests
     )
+    assert all(
+        request.provenance["articlegraph_query_primary"] is True
+        and len(request.provenance["articlegraph_query_receipt_ids"]) == 1
+        for request in provider.requests
+    )
     manifest = json.loads(
         (service.root / "runs" / run.run_id / "manifest.json").read_text(encoding="utf-8")
     )
     assert len(manifest["settled_stage_artifacts"]) == 6
     assert len(manifest["provider_invocations"]) == 6
+    assert len(manifest["articlegraph_query_receipts"]) == 6
+    receipt = service._run_store.load_query_receipts(run.run_id, ReadingStage.MAINLINE)[0]
+    assert receipt.consumer_stage == ReadingStage.MAINLINE.value
+    assert receipt.usage.returned_hits <= receipt.budget.max_hits
+    assert receipt.usage.estimated_tokens <= receipt.budget.max_estimated_tokens
+    assert {item["stage"] for item in manifest["articlegraph_query_receipts"]} == {
+        stage.value for stage in ReadingStage
+    }
+    exposure = measure_stage_context_exposure(service._run_store, service._artifacts, run.run_id)
+    assert len(exposure) == 6
+    assert all(item.quality_gain_claimed is False for item in exposure)
+    assert all(item.actual_inline_delta_tokens == 0 for item in exposure)
+    assert all(
+        item.compatibility_adapter_estimated_tokens == item.eager_stage_view_estimated_tokens
+        for item in exposure
+    )
     assert all(
         item["request"]["artifact_type"] == "stage_request"
         for item in manifest["provider_invocations"]
