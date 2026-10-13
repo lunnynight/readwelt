@@ -1,4 +1,4 @@
 interface:
   display_name: "Readwelt"
-  short_description: "Run deep, traceable reading through the Readwelt CLI"
-  default_prompt: "Use $readwelt to deeply read this article and return a traceable understanding."
+  short_description: "Use source-grounded reverse reading to understand articles"
+  default_prompt: "Use $readwelt to understand the article's central claim, argument route, evidence, tensions, and limits."

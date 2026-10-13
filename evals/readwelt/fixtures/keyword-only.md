@@ -1,0 +1,1 @@
+Political institutions reflect the class relations of a society.

@@ -118,20 +118,21 @@ def build_preregistered_manifest(
         },
         "hypotheses": {
             "location": "treatment location accuracy exceeds matched raw baseline",
-            "comprehension": "treatment comprehension is non-inferior and preferably higher",
+            "lexical_screen": (
+                "diagnostic term coverage only; does not establish semantic comprehension"
+            ),
             "repeat_cost": "warm repeated treatment reading uses fewer input tokens",
             "trust": "every accepted treatment answer has replayable query receipts",
         },
         "primary_metrics": [
             "location_accuracy",
             "citation_precision",
-            "comprehension_score",
             "warm_input_tokens",
         ],
+        "diagnostic_metrics": ["comprehension_lexical_screen"],
         "release_thresholds": {
             "location_accuracy_absolute_gain": 0.10,
             "citation_precision_minimum": 0.95,
-            "comprehension_absolute_gain": 0.05,
             "warm_input_token_reduction": 0.30,
             "valid_pair_rate": 0.95,
             "treatment_receipt_coverage": 1.0,
@@ -371,7 +372,10 @@ def _tasks(document_id: str, anchors: list[dict[str, Any]]) -> list[dict[str, An
             "expected_answer": citation["exact_text"],
             "rubric": {
                 "max_score": 1,
-                "scoring_rules": ["exact_or_containing_quote", "page_matches_gold_anchor"],
+                "scoring_rules": [
+                    "gold_anchor_fully_contained_in_quote",
+                    "page_matches_gold_anchor",
+                ],
             },
         },
         {
@@ -384,8 +388,8 @@ def _tasks(document_id: str, anchors: list[dict[str, Any]]) -> list[dict[str, An
                 "max_score": 2,
                 "required_terms": required_terms,
                 "scoring_rules": [
-                    "one_point_for_supported_core_judgment",
-                    "one_point_for_gold_or_equivalent_source_anchor",
+                    "one_point_lexical_screen_only",
+                    "one_point_semantic_review_not_scored_by_script",
                 ],
             },
         },

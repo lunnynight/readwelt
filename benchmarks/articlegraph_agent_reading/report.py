@@ -41,7 +41,7 @@ def build_report(
 
 def _quality(pairs: list[dict[str, dict[str, Any]]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    for metric in ("location", "citation", "comprehension"):
+    for metric in ("location", "citation", "comprehension_lexical_screen"):
         by_condition = {
             condition: [float(pair[condition]["scores"][metric]) for pair in pairs]
             for condition in ("baseline", "treatment")

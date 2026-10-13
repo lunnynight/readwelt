@@ -1,0 +1,1 @@
+Workers can live only when they find work, and they find work only when their labor increases capital.

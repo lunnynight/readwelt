@@ -58,7 +58,7 @@ def _record(condition: str) -> dict[str, object]:
         "exposed_evidence": {"characters": 200, "estimated_tokens": 50},
         "context_failure": False,
         "final_answer": {"answers": [{"task_id": "t1", "answer": "x"}]},
-        "scores": {"location": 1.0, "citation": 1.0, "comprehension": 1.0},
+        "scores": {"location": 1.0, "citation": 1.0, "comprehension_lexical_screen": 1.0},
         "reported_failures": [],
         "infrastructure_costs": {
             "cold_build_ms": 1000.0,
@@ -134,11 +134,21 @@ def test_report_keeps_product_and_infrastructure_metrics_separate(tmp_path: Path
     baseline = _record("baseline")
     treatment = _record("treatment")
     _attach_receipt(treatment, tmp_path)
-    treatment["scores"] = {"location": 1.0, "citation": 1.0, "comprehension": 1.5}
-    baseline["scores"] = {"location": 0.0, "citation": 0.5, "comprehension": 1.0}
+    treatment["scores"] = {
+        "location": 1.0,
+        "citation": 1.0,
+        "comprehension_lexical_screen": 1.5,
+    }
+    baseline["scores"] = {
+        "location": 0.0,
+        "citation": 0.5,
+        "comprehension_lexical_screen": 1.0,
+    }
     report = build_report([{"baseline": baseline, "treatment": treatment}], artifact_root=tmp_path)
     assert report["pair_validity"]["rate"] == 1.0
     assert report["quality"]["location"]["absolute_gain"] == 1.0
+    assert report["quality"]["comprehension_lexical_screen"]["treatment"] == 1.5
+    assert "comprehension" not in report["quality"]
     assert report["tokens"]["treatment"]["input_tokens"] == 60.0
     assert report["infrastructure"] == {
         "cold_build_ms": 1000.0,
