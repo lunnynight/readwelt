@@ -2,8 +2,8 @@
 
 - Baseline Skill: `ca3ac081:skills/readwelt/SKILL.md`
 - Revised Skill: working tree at test time
-- Model: `default`, stateless; same eight prompts and source fixtures, run once per version
-- Inputs: `../cases.json` prompts plus fixture source only. Hidden expectations were not passed to generation calls.
+- Model: `default`, stateless; the eight-case manifest snapshot at commit `c635d85`, run once per version.
+- Input boundary: this historical run predates the `theory-content-vs-purpose` and `purpose-centered-report` cases added in commit `32c42c8`; neither new case is included in the reported 7/8 result. They were run separately.
 - Grading: `grader.md` and `comparator.md`, applied as blind A/B. A=baseline, B=revised.
 - Limits: one run per version; no random-seed control or repeated sampling. This is a small paired regression, not statistical evidence.
 

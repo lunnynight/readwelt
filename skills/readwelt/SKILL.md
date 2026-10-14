@@ -35,16 +35,21 @@ most one question:
 
 > 这次你最想理解这篇文章的什么？
 
-If the user does not answer, use the default purpose: recover the article's main line, problem
-world, limits, and transferable method.
+If the user does not answer, use the default purpose: recover the article's subject, major claims
+and their relations, problem world, limits, and transferable method.
 
 For a long article:
 
-1. Read the whole available text once, marking candidate claims, reversals, and repeated concerns.
-2. Identify the controlling claim and its pivot using the procedure in phase 1.
-3. Map the section structure and record only claims, evidence, examples, and questions that bear on that reading.
-4. Keep a compact working sheet of source locations, compressed concepts, and open questions.
-5. Only after the available text has been covered, synthesize the reverse-reading report.
+1. Read the whole available text and mark candidate claims, definitions, distinctions, examples,
+   qualifications, reversals, and repeated concerns.
+2. Map the major sections and record the claims each advances, including claims that do not fit an
+   emerging interpretation. Do not select material only because it supports a provisional reading.
+3. Build a compact claim map: identify the subject/question, the main propositions, and how they
+   relate (for example, definition, premise, consequence, qualification, application, or conclusion).
+4. Separately note the author's practical purpose and the method the text recommends, if the source
+   supports them. Do not use either as a substitute for stating the theoretical or substantive claims.
+5. Synthesize only after the available text has been covered. A single controlling claim is optional:
+   use linked central claims when that better represents the text.
 
 When a temporary working sheet is needed, use a plain Markdown file such as
 `.readwelt-reading-notes.md`. It may contain coverage and evidence notes, but never hidden
@@ -59,19 +64,20 @@ Execute these phases in order. They are one reading workflow, not separate API c
 
 ```text
 source map
-  → identify the controlling claim and pivot
-  → reconstruct the background line and text movement
+  → map major claims and their relations
+  → distinguish substantive claims, method, and purpose
+  → synthesize a representative central line (or linked claims)
+  → reconstruct text movement and problem world
   → decompress knowledge
-  → reconstruct the author's problem world
   → test boundaries
   → transfer
 ```
 
-Claim identification is the hard gate for the rest of the reading. Do not let section order,
-repetition, vivid examples, or the title alone determine the article's center. Before explaining
-background or producing an outline, be able to state what expectation the text sets up, what later
-turn changes or sharpens it, and which claim best explains the whole route.
-
+The claim map is the hard gate, not a single-sentence thesis. Before explaining background or
+choosing a central line, be able to state what the text studies, what its major propositions are,
+and how they depend on, qualify, or develop one another. Then distinguish the text's substantive
+answer from the method it recommends and the purpose it serves. A purpose may explain why the
+author wrote; it does not, by itself, state what the author argues.
 ### 0. Map the source and its layers
 
 Before interpreting a multi-document package, identify what each source is and how it was made:
@@ -84,42 +90,43 @@ Record speaker/author only when the source supports the attribution. State trans
 such as machine transcription, OCR, excerpting, or unknown authorship. Do not merge layers into a
 single “article voice”. For a single authored text, briefly confirm its source and proceed.
 
-### 1. Identify the controlling claim and pivot
+### 1. Map the subject, propositions, and central line
 
-Read the whole available text before deciding what it is centrally about. Track the relationship
-between the title, opening, explicit turns, and ending:
+Read the whole available text before deciding what it is centrally about. Do not assume every essay
+has a pivot, or that its ending turns an opening into a different thesis. First record:
 
-1. **Opening expectation:** what does the title or opening invite the reader to expect or assume?
-2. **Pivot:** where does the author revise, reject, complicate, or redirect that expectation? Look
-   for explicit self-corrections, contrastive turns, newly named unease, or a question that reframes
-   earlier material.
-3. **Controlling claim:** what claim best explains why the author makes that turn and how the ending
-   resolves, deepens, or leaves it open?
-4. **Whole-text test:** does this claim account for the opening, the pivot, the selection and
-   function of later material, and the ending? Can a competing candidate explain those parts as
-   well? A claim that explains only one section is supporting, not controlling. When the author
-   explicitly revises the opening frame, give that later framing its argumentative weight rather
-   than averaging the two frames into a neutral summary.
-5. **Material hierarchy:** provisionally classify passages as central claim, support, illustration,
-   side thread, or unresolved concern. This classification is a reading aid, not a filter: material
-   that resists the provisional claim must remain visible and may require revising that claim.
+1. **Subject and question:** what object or problem does the text investigate?
+2. **Major propositions:** what does the author assert about that subject? Distinguish the author's
+   claims from quoted, rejected, or provisional claims.
+3. **Relations:** how do the propositions connect? Mark definitions, premises, consequences,
+   distinctions, qualifications, examples, and conclusions. Preserve relations between claims,
+   rather than reducing a theory to a list of topics.
+4. **Method:** what way of investigating or acting follows from those claims?
+5. **Purpose:** what problem or practical aim does the author say the text addresses? Treat this as
+   a distinct layer, even when it shapes the choice or emphasis of the theory.
 
-Write a one- or two-sentence provisional reading and anchor it to the pivot and ending. For essays
-without an explicit reversal, identify the passage that most strongly organizes the other claims;
-do not invent a pivot. For interviews or genuinely multi-voice material, allow multiple unresolved
-lines rather than forcing one thesis.
+Only then synthesize the central line. Ask whether a proposed summary represents the text's
+important propositions and their relations, not merely whether it explains the opening, ending, or
+author's purpose. A summary can be supported by the source yet still be too narrow to represent the
+whole. Do not make concepts into subordinate examples of a purpose unless the text supports that
+hierarchy.
 
-**Gate:** before continuing, state the opening expectation, pivot or organizing passage, and
-provisional controlling claim (or justified parallel threads). Offer a competing reading only when
-the text supports a real alternative; do not manufacture one to satisfy a template.
+For theoretical or systematic texts, prioritize the concepts, propositions, distinctions, and
+inferences that constitute the theory. For essays organized around an explicit reversal, trace the
+expectation and turn. For interviews or genuinely multi-voice material, allow multiple linked or
+unresolved lines. These are reading emphases, not rigid genre templates; let the text's actual
+structure determine which applies.
 
+**Gate:** before continuing, state (internally or in a compact working sheet) the subject, major
+propositions and their relations, method, and purpose as separate items. A single thesis is optional.
+Offer a competing reading only when the text supports a real alternative; do not manufacture one.
 ### 1a. Preserve unresolved material before adding context
 
-Keep a compact evidence map (not hidden reasoning) with source locations for the provisional claim,
-its support, qualifications, exceptions, counterevidence, scope changes, and important passages it
-does not yet explain. Record these categories separately; do not demote inconvenient material to a
-side thread merely to make the account smoother. Revisit the provisional claim when the map exposes
-a conflict or unexplained passage.
+Keep a compact evidence map (not hidden reasoning) with source locations for the major propositions,
+their relations, supporting material, qualifications, exceptions, counterevidence, scope changes,
+and passages not yet explained. Record these categories separately; do not demote material to a side
+thread merely because it resists an emerging synthesis. Revisit the claim map when it exposes an
+omission or mistaken hierarchy.
 
 Before adding external background, compare related claims inside the text. For each apparent
 tension, identify both passages, state their speakers and conditions, compare their scope and
@@ -134,7 +141,7 @@ verification merely because the source was attached or read.
 
 ### 2. Reconstruct the background line and text movement
 
-Use the provisional claim to recover how the text arrives there. Explain this as a connected account
+Use the claim map to recover how the text develops its ideas. Explain this as a connected account
 for a reader who has not read the source—not as a list of topics.
 
 Recover, where present:
@@ -146,9 +153,9 @@ Recover, where present:
 3. **Question formation:** how does that pressure become the question the text addresses? What
    alternative questions or concerns appear along the way?
 4. **Route through the text:** how do examples, analogies, objections, or topic shifts build toward
-   or complicate the controlling claim?
-5. **Claim formation:** which earlier moment does each major claim answer, and what role does it
-   play in the controlling line?
+   or complicate the major propositions and their relations?
+5. **Claim formation:** how does each major proposition arise, and what role does it play in the
+   developing account?
 
 For conversation, interview, or multi-voice material, reconstruct the exchange: who introduces a
 topic, what the other person asks or adds, where the subject shifts, and whether a later claim
@@ -159,28 +166,27 @@ text does not establish the real-world situation, say what can and cannot be rec
 invent a plausible backstory. External context may be added later, clearly labelled, but cannot
 substitute for reading the text's own opening, transitions, and conclusion.
 
-**Gate:** an unfamiliar reader should be able to retell the concrete situation, how the question
-forms, why the pivot matters, and how the text arrives at its controlling claim. If the account
-could be produced from headings or topic labels alone, return to the source and restore the sequence.
+**Gate:** an unfamiliar reader should be able to follow how the question forms and how the text
+develops its major propositions. If the account could be produced from headings or topic labels
+alone, return to the source and restore the sequence.
 
 ### 3. Recover the article's structure
 
 Distinguish the roles of passages:
 
-- controlling claim, supporting claim, premise, evidence, example, objection, qualification, and
-  conclusion;
+- major proposition, premise, evidence, example, objection, qualification, and conclusion;
 - the author's claim versus a quoted or rejected claim;
 - a temporary hypothesis versus a settled conclusion;
-- material central to the line versus material that adds texture or opens a side question.
+- theoretical content versus method and stated purpose.
 
-Describe transitions, not merely topics. Explain how each major passage supports, qualifies,
-complicates, or distracts from the controlling claim. Preserve digressions and discontinuities where
+Describe transitions and relations, not merely topics. Explain how each major passage supports,
+qualifies, develops, or challenges the propositions. Preserve digressions and discontinuities where
 they matter; do not retrofit them into a tidy proof.
 
 Before elevating an example, state its job in this text: evidence for a claim, illustration,
 counterexample, analogy, qualification, or side thread. If its job is unclear, keep it secondary
 rather than promoting it to the article's thesis. Conversely, do not discard a passage that resists
-the provisional thesis; record it as a counterpoint or unresolved item and reconsider the thesis.
+the provisional synthesis; record it and reconsider the claim map.
 
 Only after phases 1–3 are stable, identify the unstated knowledge needed to understand the
 article's claims in their own setting. Treat familiar words as possible compression points:
@@ -351,16 +357,15 @@ of explaining the people, events, and reasoning. Avoid ornamental contrasts, rep
 Y” constructions, jargon, and abstract summaries when a concrete account would be clearer.
 Preserve the author's uncertainty and complexity without making the prose itself obscure.
 
-Section 1 must let an unfamiliar reader follow the situation, how the question forms, and why the
-next idea arises. For conversation, include who says what to whom and how the exchange changes
-direction. Do not start with a topic list or thesis label.
+Section 1 must let an unfamiliar reader understand the article's subject, important propositions,
+and how those propositions relate. Do not start with a thesis label or a topic list.
 
-Section 2 explains the argument and its transitions. Keep quotation, inference, and outside
-context distinct, but do not attach a bracketed label to every sentence. Put source references
-where they help the reader check a claim; keep evidence tags light enough that they do not break
-the sentence's flow. If the material does not support a coherent single line, show the breaks
-rather than inventing one.
-
+Section 2 explains the text's argument and transitions. It must keep substantive claims, method,
+and purpose distinct while showing how they connect. Keep quotation, inference, and outside context
+distinct, but do not attach a bracketed label to every sentence. Put source references where they
+help the reader check a claim; keep evidence tags light enough that they do not break the sentence's
+flow. If the material does not support a coherent single line, show the breaks rather than inventing
+one.
 Section 3 explains only the background needed to understand the text. Where practice or historical
 change matters, make the hidden steps, capabilities, roles, constraints, and relevant time
 snapshot concrete. Follow the article's own evidence and distinctions; don't apply a fixed domain
@@ -381,15 +386,15 @@ section or detail was checked unless the map supports that assertion.
 
 Before returning, verify these acceptance gates:
 
-1. **Reading:** State the opening expectation, pivot or organizing passage, and provisional
-   controlling claim (or justified parallel threads). Do not force a competing reading; include one
-   only when source evidence supports it.
+1. **Reading:** State the subject, major propositions and their relations, method, and purpose as
+   distinct layers. A single central claim is optional; do not use a supported purpose statement as
+   a substitute for the text's substantive claims.
 2. **Route:** The reader can follow how the situation creates a question and how major moves answer,
    qualify, or complicate it.
 3. **Coverage and evidence:** Compare the report with the evidence map; disclose source limits and
    gaps. Important judgments distinguish quotation, inference, and outside context.
 4. **Counterpoint check:** Account for important qualifications, exceptions, contrary statements,
-   and passages unexplained by the provisional claim. For apparent contradictions, compare the
+   and material the current synthesis does not explain. For apparent contradictions, compare the
    exact claims, speaker, scope, conditions, and strength; distinguish contradiction, qualification,
    different scope, and unresolved tension. Do not require a contradiction where none is supported.
 5. **Context and boundaries:** Include useful background; explain the problem world and test limits

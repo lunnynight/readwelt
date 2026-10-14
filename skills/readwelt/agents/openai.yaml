@@ -1,4 +1,4 @@
 interface:
   display_name: "Readwelt"
   short_description: "Use source-grounded reverse reading to understand articles"
-  default_prompt: "Use $readwelt to understand the article's central claim, argument route, evidence, tensions, and limits."
+  default_prompt: "Use $readwelt to identify the article's subject, major claims and relations, method, purpose, evidence, tensions, and limits without collapsing them into one thesis."
