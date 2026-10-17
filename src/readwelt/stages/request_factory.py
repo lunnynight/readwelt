@@ -20,7 +20,7 @@ from readwelt.providers.contracts import (
 from readwelt.providers.request_budget import settle_stage_request
 from readwelt.stage_views import StageView
 
-from .policies import ARTICLE_ONLY, RESPONSE_SCHEMA, STAGE_POLICIES
+from .policies import ARTICLE_ONLY, STAGE_POLICIES, response_schema_for_stage
 
 
 def build_stage_request(
@@ -161,7 +161,7 @@ def build_stage_request(
         run_id=evidence.run_id,
         stage=stage.value,
         evidence_packet=packet,
-        response_schema=RESPONSE_SCHEMA,
+        response_schema=response_schema_for_stage(stage),
         capabilities=("external_evidence",) if external_allowed else (),
         provenance={
             "provider": provider_name,

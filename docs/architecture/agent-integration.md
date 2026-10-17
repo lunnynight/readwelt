@@ -63,6 +63,13 @@ The Agent-facing operations are:
 The host generates only the candidate object described by `request.response_schema`. Readwelt
 binds the run id, current stage, request digest, Agent identity, and model during submission:
 
+Stage 3 also requires `decompression_units` in the current response schema. Each unit explains a
+decompression point and links it to claim ids and admitted source citations; optional fields capture
+introduced or assumed concepts, mechanism steps, dependencies, missing prerequisites, tacit
+practices, assumptions, inferred relations, boundaries, alternatives, changed-condition examples,
+and uncertainties. Readwelt persists these units inside the stage artifact as
+`decompression-artifact.v1`. Hosts must use the stage-specific schema returned in each request.
+
 ```powershell
 Get-Content .\candidate.json -Raw |
   readwelt agent-submit run_... - --agent-name codex --model host-model `

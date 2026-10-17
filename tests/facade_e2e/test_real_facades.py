@@ -36,7 +36,19 @@ def _candidate(request: StageRequest) -> dict[str, Any]:
     if stage not in (ReadingStage.MAINLINE, ReadingStage.STRUCTURE):
         for claim in claims:
             claim["source_claim_ids"] = [request.evidence_packet["upstream_claims"][0]["claim_id"]]
-    return {"claims": claims, "gaps": [], "warnings": []}
+    candidate: dict[str, Any] = {"claims": claims, "gaps": [], "warnings": []}
+    if stage is ReadingStage.DECOMPRESSION:
+        candidate["decompression_units"] = [
+            {
+                "unit_id": "stage3-unit-0",
+                "explanation": "The stage claim depends on the article's stated prerequisite.",
+                "claim_ids": [claims[0]["claim_id"]],
+                "source_citations": [
+                    {"kind": "anchor", "identity": anchors[0]["anchor_id"]}
+                ],
+            }
+        ]
+    return candidate
 
 
 def _service(tmp_path: Path) -> ReadweltApplicationService:

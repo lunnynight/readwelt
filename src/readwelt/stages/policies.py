@@ -44,8 +44,9 @@ STAGE_POLICIES: Mapping[ReadingStage, Mapping[str, Any]] = {
     ReadingStage.DECOMPRESSION: {
         "goal": "Decompress knowledge assumed or compressed by the article.",
         "produce": (
-            "prerequisites, concepts, context, verification targets, and conflicts "
-            "linked to specific source or upstream claim ids"
+            "source-grounded decompression units with prerequisites, concepts, "
+            "mechanisms, assumptions, boundaries, transfer examples, and uncertainties; "
+            "link each unit to stage claims and typed source citations"
         ),
         "constraints": (
             "External evidence may support, qualify, or challenge frozen article "
@@ -84,6 +85,20 @@ STAGE_POLICIES: Mapping[ReadingStage, Mapping[str, Any]] = {
         ),
     },
 }
+_SOURCE_CITATION_SCHEMA: Mapping[str, Any] = {
+    "type": "object",
+    "required": ["kind", "identity"],
+    "properties": {
+        "schema_version": {"type": "string", "enum": ["source-citation.v1"]},
+        "kind": {"enum": ["anchor", "unit", "range", "element", "graph_object"]},
+        "identity": {"type": "string"},
+    },
+}
+_STRING_ARRAY_SCHEMA: Mapping[str, Any] = {
+    "type": "array",
+    "items": {"type": "string"},
+}
+
 RESPONSE_SCHEMA: Mapping[str, Any] = {
     "type": "object",
     "required": ["claims"],
@@ -103,26 +118,7 @@ RESPONSE_SCHEMA: Mapping[str, Any] = {
                     },
                     "source_citations": {
                         "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["kind", "identity"],
-                            "properties": {
-                                "schema_version": {
-                                    "type": "string",
-                                    "enum": ["source-citation.v1"],
-                                },
-                                "kind": {
-                                    "enum": [
-                                        "anchor",
-                                        "unit",
-                                        "range",
-                                        "element",
-                                        "graph_object",
-                                    ]
-                                },
-                                "identity": {"type": "string"},
-                            },
-                        },
+                        "items": _SOURCE_CITATION_SCHEMA,
                     },
                     "decision": {
                         "enum": [decision.value for decision in LedgerDecision],
@@ -155,3 +151,48 @@ RESPONSE_SCHEMA: Mapping[str, Any] = {
         "warnings": {"type": "array", "items": {"type": "string"}},
     },
 }
+DECOMPRESSION_RESPONSE_SCHEMA: Mapping[str, Any] = {
+    **RESPONSE_SCHEMA,
+    "required": [*RESPONSE_SCHEMA["required"], "decompression_units"],
+    "properties": {
+        **RESPONSE_SCHEMA["properties"],
+        "decompression_units": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "unit_id",
+                    "explanation",
+                    "claim_ids",
+                    "source_citations",
+                ],
+                "properties": {
+                    "unit_id": {"type": "string"},
+                    "explanation": {"type": "string"},
+                    "claim_ids": _STRING_ARRAY_SCHEMA,
+                    "source_citations": {
+                        "type": "array",
+                        "items": _SOURCE_CITATION_SCHEMA,
+                    },
+                    "concepts_introduced": _STRING_ARRAY_SCHEMA,
+                    "concepts_assumed": _STRING_ARRAY_SCHEMA,
+                    "mechanism_steps": _STRING_ARRAY_SCHEMA,
+                    "dependencies": _STRING_ARRAY_SCHEMA,
+                    "missing_prerequisites": _STRING_ARRAY_SCHEMA,
+                    "tacit_practices": _STRING_ARRAY_SCHEMA,
+                    "assumptions": _STRING_ARRAY_SCHEMA,
+                    "inferred_relations": _STRING_ARRAY_SCHEMA,
+                    "boundary_conditions": _STRING_ARRAY_SCHEMA,
+                    "alternatives": _STRING_ARRAY_SCHEMA,
+                    "changed_condition_examples": _STRING_ARRAY_SCHEMA,
+                    "uncertainties": _STRING_ARRAY_SCHEMA,
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
+}
+
+
+def response_schema_for_stage(stage: ReadingStage) -> Mapping[str, Any]:
+    return DECOMPRESSION_RESPONSE_SCHEMA if stage is ReadingStage.DECOMPRESSION else RESPONSE_SCHEMA

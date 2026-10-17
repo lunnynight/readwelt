@@ -11,6 +11,8 @@ from typing import Any
 from readwelt.article_graph.digest import content_digest
 from readwelt.domain.ids import stable_id
 from readwelt.domain.reading import (
+    DecompressionArtifact,
+    DecompressionUnit,
     LedgerDecision,
     ReadingClaim,
     ReadingGap,
@@ -66,6 +68,19 @@ def settle_candidate(
         raise ValueError("candidate claim ids must be unique")
     gaps = tuple(parse_gap(item, stage) for item in raw_gaps)
     warnings = string_tuple(payload.get("warnings", ()), "warnings")
+    if stage is ReadingStage.DECOMPRESSION:
+        decompression_artifact = parse_decompression_artifact(
+            payload.get("decompression_units", ()),
+            run_id=run_id,
+            claims=claims,
+            allowed_anchor_ids=allowed_anchor_ids,
+            allowed_graph_object_ids=allowed_graph_object_ids,
+            allowed_source_citations=allowed_source_citations,
+        )
+    else:
+        if "decompression_units" in payload:
+            raise ValueError("decompression units are only valid for stage three")
+        decompression_artifact = None
     status = epistemic_status(claims, gaps)
     digest_payload = {
         "run_id": run_id,
@@ -78,6 +93,10 @@ def settle_candidate(
         "model": candidate.model,
         "status": status.value,
     }
+    if decompression_artifact is not None:
+        digest_payload["decompression_artifact"] = decompression_artifact_dict(
+            decompression_artifact
+        )
     digest = digest_value(digest_payload)
     return StageArtifact(
         artifact_id=stable_id("stage_artifact", run_id, stage.value, digest),
@@ -92,6 +111,7 @@ def settle_candidate(
         status=status,
         content_digest=digest,
         provider_provenance=provenance_tuple(candidate.provenance),
+        decompression_artifact=decompression_artifact,
     )
 
 
@@ -304,6 +324,140 @@ def parse_gap(value: Mapping[str, Any], stage: ReadingStage) -> ReadingGap:
         repairable=bool(value.get("repairable", False)),
         resolved=bool(value.get("resolved", False)),
     )
+
+
+def parse_decompression_artifact(
+    value: object,
+    *,
+    run_id: str,
+    claims: Sequence[ReadingClaim],
+    allowed_anchor_ids: frozenset[str],
+    allowed_graph_object_ids: frozenset[str],
+    allowed_source_citations: frozenset[SourceCitation] | None,
+) -> DecompressionArtifact:
+    raw_units = mapping_sequence(value, "decompression_units")
+    if not raw_units:
+        raise ValueError("decompression stage requires at least one unit")
+    claims_by_id = {claim.claim_id: claim for claim in claims}
+    admitted_citations = (
+        allowed_source_citations
+        if allowed_source_citations is not None
+        else frozenset(
+            (
+                *(
+                    SourceCitation(SourceCitationKind.ANCHOR, identity)
+                    for identity in allowed_anchor_ids
+                ),
+                *(
+                    SourceCitation(SourceCitationKind.GRAPH_OBJECT, identity)
+                    for identity in allowed_graph_object_ids
+                ),
+            )
+        )
+    )
+    units: list[DecompressionUnit] = []
+    for item in raw_units:
+        claim_ids = string_tuple(item.get("claim_ids", ()), "claim_ids")
+        if not claim_ids:
+            raise ValueError("decompression unit requires linked stage claims")
+        unknown_claim_ids = set(claim_ids) - set(claims_by_id)
+        if unknown_claim_ids:
+            raise ValueError(
+                f"decompression unit references unknown stage claims: "
+                f"{sorted(unknown_claim_ids)}"
+            )
+        source_citations = parse_source_citations(item.get("source_citations", ()))
+        if not source_citations:
+            raise ValueError("decompression unit requires source citations")
+        unknown_citations = tuple(
+            citation for citation in source_citations if citation not in admitted_citations
+        )
+        if unknown_citations:
+            raise ValueError(
+                "decompression unit cites material outside the presented source: "
+                f"{[(item.kind.value, item.identity) for item in unknown_citations]}"
+            )
+        linked_citations = {
+            citation
+            for claim_id in claim_ids
+            for citation in claims_by_id[claim_id].source_citations
+        }
+        if not set(source_citations).issubset(linked_citations):
+            raise ValueError(
+                "decompression unit citations must be grounded by linked claims"
+            )
+
+        def text_values(field: str) -> tuple[str, ...]:
+            return tuple(item.strip() for item in string_tuple(item.get(field, ()), field))
+
+        units.append(
+            DecompressionUnit(
+                unit_id=str(item.get("unit_id", "")).strip(),
+                explanation=str(item.get("explanation", "")).strip(),
+                claim_ids=claim_ids,
+                source_citations=source_citations,
+                concepts_introduced=text_values("concepts_introduced"),
+                concepts_assumed=text_values("concepts_assumed"),
+                mechanism_steps=text_values("mechanism_steps"),
+                dependencies=text_values("dependencies"),
+                missing_prerequisites=text_values("missing_prerequisites"),
+                tacit_practices=text_values("tacit_practices"),
+                assumptions=text_values("assumptions"),
+                inferred_relations=text_values("inferred_relations"),
+                boundary_conditions=text_values("boundary_conditions"),
+                alternatives=text_values("alternatives"),
+                changed_condition_examples=text_values("changed_condition_examples"),
+                uncertainties=text_values("uncertainties"),
+            )
+        )
+    payload = {
+        "schema_version": "decompression-artifact.v1",
+        "run_id": run_id,
+        "units": [decompression_unit_dict(unit) for unit in units],
+    }
+    identity_digest = digest_value(payload)
+    return DecompressionArtifact(
+        artifact_id=stable_id("decompression_artifact", run_id, identity_digest),
+        run_id=run_id,
+        units=tuple(units),
+    )
+
+
+def decompression_artifact_dict(artifact: DecompressionArtifact) -> dict[str, Any]:
+    return {
+        "artifact_id": artifact.artifact_id,
+        "run_id": artifact.run_id,
+        "schema_version": artifact.schema_version,
+        "units": [decompression_unit_dict(unit) for unit in artifact.units],
+    }
+
+
+def decompression_unit_dict(unit: DecompressionUnit) -> dict[str, Any]:
+    return {
+        "unit_id": unit.unit_id,
+        "explanation": unit.explanation,
+        "claim_ids": unit.claim_ids,
+        "source_citations": tuple(
+            {
+                "schema_version": citation.schema_version,
+                "kind": citation.kind.value,
+                "identity": citation.identity,
+            }
+            for citation in unit.source_citations
+        ),
+        "concepts_introduced": unit.concepts_introduced,
+        "concepts_assumed": unit.concepts_assumed,
+        "mechanism_steps": unit.mechanism_steps,
+        "dependencies": unit.dependencies,
+        "missing_prerequisites": unit.missing_prerequisites,
+        "tacit_practices": unit.tacit_practices,
+        "assumptions": unit.assumptions,
+        "inferred_relations": unit.inferred_relations,
+        "boundary_conditions": unit.boundary_conditions,
+        "alternatives": unit.alternatives,
+        "changed_condition_examples": unit.changed_condition_examples,
+        "uncertainties": unit.uncertainties,
+    }
 
 
 def mapping_sequence(value: object, field: str) -> tuple[Mapping[str, Any], ...]:

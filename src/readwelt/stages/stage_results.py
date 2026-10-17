@@ -21,6 +21,7 @@ from readwelt.domain.status import EpistemicStatus, ExecutionStatus
 
 from .candidate_settlement import (
     claim_dict,
+    decompression_artifact_dict,
     digest_value,
     epistemic_status,
     gap_dict,
@@ -244,6 +245,10 @@ def rebuild_artifact(
         "model": artifact.model,
         "input_state": (asdict(artifact.input_state) if artifact.input_state is not None else None),
     }
+    if artifact.decompression_artifact is not None:
+        payload["decompression_artifact"] = decompression_artifact_dict(
+            artifact.decompression_artifact
+        )
     digest = digest_value(payload)
     return StageArtifact(
         artifact_id=stable_id(
@@ -264,4 +269,5 @@ def rebuild_artifact(
         content_digest=digest,
         provider_provenance=artifact.provider_provenance,
         input_state=artifact.input_state,
+        decompression_artifact=artifact.decompression_artifact,
     )

@@ -14,6 +14,8 @@ from readwelt.domain import (
     EvidencePacket,
     ExecutionStatus,
     ReadingStage,
+    SourceCitation,
+    SourceCitationKind,
     SourceDocumentSnapshot,
     SpanAnchor,
     StageArtifact,
@@ -29,8 +31,9 @@ from readwelt.stage_views import (
 )
 from readwelt.stages import SixStageReadingEngine, StageInputIncomplete
 from readwelt.stages.candidate_settlement import bind_stage_input
-from readwelt.stages.policies import RESPONSE_SCHEMA
+from readwelt.stages.policies import RESPONSE_SCHEMA, response_schema_for_stage
 from readwelt.stages.request_factory import build_stage_request
+from readwelt.stages.stage_results import rebuild_artifact
 
 
 class FakeCandidateProvider:
@@ -42,12 +45,14 @@ class FakeCandidateProvider:
         bad_anchor_at: ReadingStage | None = None,
         illegal_stage6_source: bool = False,
         empty_stage6_source: bool = False,
+        bad_decompression_citation: bool = False,
     ) -> None:
         self.anchor_id = anchor_id
         self.critical_gap_at = critical_gap_at
         self.bad_anchor_at = bad_anchor_at
         self.illegal_stage6_source = illegal_stage6_source
         self.empty_stage6_source = empty_stage6_source
+        self.bad_decompression_citation = bad_decompression_citation
         self.requests: list[StageRequest] = []
 
     @property
@@ -103,11 +108,34 @@ class FakeCandidateProvider:
                     "critical": True,
                 }
             )
+        candidate_payload: dict[str, Any] = {"claims": claims, "gaps": gaps, "warnings": []}
+        if stage is ReadingStage.DECOMPRESSION:
+            candidate_payload["decompression_units"] = [
+                {
+                    "unit_id": "stage3-unit-0",
+                    "explanation": "The claim depends on the article's stated prerequisite.",
+                    "claim_ids": [claims[0]["claim_id"]],
+                    "source_citations": [
+                        {
+                            "kind": "anchor",
+                            "identity": (
+                                "anchor:not-admitted"
+                                if self.bad_decompression_citation
+                                else anchor_id
+                            ),
+                        }
+                    ],
+                    "missing_prerequisites": ["the prerequisite condition"],
+                    "mechanism_steps": ["apply the prerequisite before the claim"],
+                    "changed_condition_examples": ["remove the prerequisite and reassess"],
+                    "uncertainties": ["whether the source establishes the prerequisite"],
+                }
+            ]
         return StageCandidate(
             schema_version="1",
             run_id=request.run_id,
             stage=request.stage,
-            candidate={"claims": claims, "gaps": gaps, "warnings": []},
+            candidate=candidate_payload,
             provider=self.name,
             model=self.model,
         )
@@ -118,6 +146,19 @@ def test_response_schema_requires_structured_gap_entries() -> None:
 
     assert gaps["items"]["type"] == "object"
     assert set(gaps["items"]["required"]) == {"kind", "description"}
+
+
+def test_provider_contract_requires_decompression_units_only_for_stage_three() -> None:
+    from readwelt.providers.contracts import ProviderContractError, validate_json_schema
+
+    candidate = {"claims": []}
+
+    validate_json_schema(candidate, response_schema_for_stage(ReadingStage.MAINLINE))
+    with pytest.raises(
+        ProviderContractError,
+        match="missing required fields: decompression_units",
+    ):
+        validate_json_schema(candidate, response_schema_for_stage(ReadingStage.DECOMPRESSION))
 
 
 def _snapshot_and_packet() -> tuple[SourceDocumentSnapshot, EvidencePacket, SpanAnchor]:
@@ -158,6 +199,23 @@ def _snapshot_and_packet() -> tuple[SourceDocumentSnapshot, EvidencePacket, Span
         token_budget=2048,
     )
     return snapshot, packet, anchor
+
+
+def test_decompression_stage_retains_a_versioned_source_grounded_unit() -> None:
+    snapshot, packet, anchor = _snapshot_and_packet()
+    bundle = asyncio.run(SixStageReadingEngine(FakeCandidateProvider(anchor.anchor_id)).run(
+        snapshot,
+        packet,
+    ))
+
+    artifact = bundle.artifacts[2]
+    decompression = artifact.decompression_artifact
+    assert decompression is not None
+    assert decompression.schema_version == "decompression-artifact.v1"
+    assert decompression.units[0].claim_ids == ("stage_3_decompression:claim:0",)
+    assert decompression.units[0].source_citations == (
+        SourceCitation(SourceCitationKind.ANCHOR, anchor.anchor_id),
+    )
 
 
 def test_executes_fixed_order_and_enforces_evidence_boundaries() -> None:
@@ -283,6 +341,21 @@ def test_unknown_anchor_freezes_a_failed_bundle_without_later_stages() -> None:
         ReadingStage.MAINLINE.value,
         ReadingStage.STRUCTURE.value,
     ]
+
+
+def test_decompression_unit_rejects_unadmitted_source_citations() -> None:
+    snapshot, packet, anchor = _snapshot_and_packet()
+    provider = FakeCandidateProvider(
+        anchor.anchor_id,
+        bad_decompression_citation=True,
+    )
+
+    bundle = asyncio.run(SixStageReadingEngine(provider).run(snapshot, packet))
+
+    assert bundle.execution_status is ExecutionStatus.FAILED
+    assert bundle.failure is not None
+    assert "decompression unit cites material outside the presented source" in bundle.failure
+    assert len(bundle.artifacts) == 2
 
 
 def test_stage6_rejects_a_claim_sourced_directly_from_stage1() -> None:
@@ -571,3 +644,24 @@ def test_external_evidence_enters_request_only_by_typed_stage_view_admission() -
         "stage_policy": ReadingStage.DECOMPRESSION.value,
     }
     assert request.evidence_packet["external_evidence_omissions"] == []
+
+
+def test_rebuild_artifact_preserves_provider_provenance() -> None:
+    artifact = StageArtifact(
+        artifact_id="artifact-provenance",
+        run_id="run-provenance",
+        stage=ReadingStage.MAINLINE,
+        claims=(),
+        gaps=(),
+        warnings=(),
+        input_artifact_ids=(),
+        provider="test-provider",
+        model="test-model",
+        status=EpistemicStatus.SUFFICIENT,
+        content_digest="sha256:" + "a" * 64,
+        provider_provenance=(("request_digest", "sha256:" + "b" * 64),),
+    )
+
+    rebuilt = rebuild_artifact(artifact, warnings=("added warning",))
+
+    assert rebuilt.provider_provenance == artifact.provider_provenance

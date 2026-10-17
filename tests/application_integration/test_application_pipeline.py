@@ -70,11 +70,23 @@ class PipelineProvider:
             )
             for claim in claims:
                 claim["source_claim_ids"] = [upstream[0]["claim_id"]]
+        candidate: dict[str, Any] = {"claims": claims, "gaps": [], "warnings": []}
+        if stage is ReadingStage.DECOMPRESSION:
+            candidate["decompression_units"] = [
+                {
+                    "unit_id": "stage3-unit-0",
+                    "explanation": "The stage claim depends on the article's stated prerequisite.",
+                    "claim_ids": [claims[0]["claim_id"]],
+                    "source_citations": [
+                        {"kind": "anchor", "identity": anchors[0]["anchor_id"]}
+                    ],
+                }
+            ]
         return StageCandidate(
             schema_version="1",
             run_id=request.run_id,
             stage=request.stage,
-            candidate={"claims": claims, "gaps": [], "warnings": []},
+            candidate=candidate,
             provider=self.name,
             model=self.model,
         )
@@ -223,6 +235,16 @@ def test_read_executes_and_persists_the_full_pipeline(tmp_path: Path) -> None:
     assert len(manifest["settled_stage_artifacts"]) == 6
     assert len(manifest["provider_invocations"]) == 6
     assert len(manifest["articlegraph_query_receipts"]) == 6
+    stage_three_record = next(
+        item
+        for item in manifest["settled_stage_artifacts"]
+        if item["stage"] == ReadingStage.DECOMPRESSION.value
+    )
+    assert stage_three_record["artifact"]["schema_version"] == "3"
+    persisted_stage_three = service._run_store.load_stage_artifacts(run.run_id)[2]
+    decompression_artifact = persisted_stage_three.decompression_artifact
+    assert decompression_artifact is not None
+    assert decompression_artifact.schema_version == "decompression-artifact.v1"
     receipt = service._run_store.load_query_receipts(run.run_id, ReadingStage.MAINLINE)[0]
     assert receipt.consumer_stage == ReadingStage.MAINLINE.value
     assert receipt.usage.returned_hits <= receipt.budget.max_hits
@@ -301,6 +323,18 @@ def test_agent_takeover_pauses_and_replays_submitted_candidates(tmp_path: Path) 
             upstream = request.evidence_packet["upstream_claims"]
             for claim in claims:
                 claim["source_claim_ids"] = [upstream[0]["claim_id"]]
+        candidate: dict[str, Any] = {"claims": claims, "gaps": [], "warnings": []}
+        if stage is ReadingStage.DECOMPRESSION:
+            candidate["decompression_units"] = [
+                {
+                    "unit_id": "stage3-unit-0",
+                    "explanation": "The stage claim depends on the article's stated prerequisite.",
+                    "claim_ids": [claims[0]["claim_id"]],
+                    "source_citations": [
+                        {"kind": "anchor", "identity": anchors[0]["anchor_id"]}
+                    ],
+                }
+            ]
         run = service.submit_stage_candidate(
             run.run_id,
             stage.value,
@@ -308,7 +342,7 @@ def test_agent_takeover_pauses_and_replays_submitted_candidates(tmp_path: Path) 
                 schema_version="1",
                 run_id=run.run_id,
                 stage=stage.value,
-                candidate={"claims": claims, "gaps": [], "warnings": []},
+                candidate=candidate,
                 provider="codex-test-agent",
                 model="test",
                 provenance={
@@ -532,9 +566,21 @@ def test_host_neutral_agent_turns_complete_without_an_internal_provider(
                 }
                 for index in range(2 if expected_stage is ReadingStage.AUTHOR_MODEL else 1)
             ]
+            candidate_payload: dict[str, Any] = {"claims": claims, "gaps": [], "warnings": []}
+            if expected_stage is ReadingStage.DECOMPRESSION:
+                candidate_payload["decompression_units"] = [
+                    {
+                        "unit_id": "stage3-unit-0",
+                        "explanation": "The claim depends on the cited article passage.",
+                        "claim_ids": [claims[0]["claim_id"]],
+                        "source_citations": [
+                            {"kind": "anchor", "identity": anchors[0]["anchor_id"]}
+                        ],
+                    }
+                ]
             turn = await agent.advance(
                 turn["run_id"],
-                {"claims": claims, "gaps": [], "warnings": []},
+                candidate_payload,
                 agent_name="generic-agent",
                 model="agent-model",
             )

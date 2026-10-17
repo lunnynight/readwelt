@@ -9,6 +9,8 @@ from typing import Any
 from readwelt.domain import (
     ArtifactRef,
     ArtifactStatus,
+    DecompressionArtifact,
+    DecompressionUnit,
     LedgerDecision,
     ReadingClaim,
     ReadingGap,
@@ -284,6 +286,9 @@ def decode_stage_artifact(value: Mapping[str, Any]) -> StageArtifact:
         raise ValueError("stage artifact claims and gaps must be arrays")
     claims = tuple(decode_claim(item, stage) for item in raw_claims)
     gaps = tuple(decode_gap(item, stage) for item in raw_gaps)
+    raw_decompression = value.get("decompression_artifact")
+    if raw_decompression is not None and not isinstance(raw_decompression, Mapping):
+        raise ValueError("stage artifact decompression_artifact must be an object")
     raw_input_state = value.get("input_state")
     if raw_input_state is not None and not isinstance(raw_input_state, Mapping):
         raise ValueError("stage artifact input_state must be an object")
@@ -334,6 +339,66 @@ def decode_stage_artifact(value: Mapping[str, Any]) -> StageArtifact:
             "provider_provenance",
         ),
         input_state=input_state,
+        decompression_artifact=(
+            decode_decompression_artifact(raw_decompression)
+            if isinstance(raw_decompression, Mapping)
+            else None
+        ),
+    )
+
+
+def decode_decompression_artifact(value: Mapping[str, Any]) -> DecompressionArtifact:
+    raw_units = value.get("units")
+    if not isinstance(raw_units, list):
+        raise ValueError("decompression artifact units must be an array")
+    units: list[DecompressionUnit] = []
+    for raw_unit in raw_units:
+        if not isinstance(raw_unit, Mapping):
+            raise ValueError("decompression artifact units must be objects")
+        units.append(
+            DecompressionUnit(
+                unit_id=str(raw_unit.get("unit_id", "")).strip(),
+                explanation=str(raw_unit.get("explanation", "")).strip(),
+                claim_ids=string_tuple(raw_unit.get("claim_ids"), "claim_ids"),
+                source_citations=source_citations(raw_unit.get("source_citations")),
+                concepts_introduced=string_tuple(
+                    raw_unit.get("concepts_introduced", []), "concepts_introduced"
+                ),
+                concepts_assumed=string_tuple(
+                    raw_unit.get("concepts_assumed", []), "concepts_assumed"
+                ),
+                mechanism_steps=string_tuple(
+                    raw_unit.get("mechanism_steps", []), "mechanism_steps"
+                ),
+                dependencies=string_tuple(raw_unit.get("dependencies", []), "dependencies"),
+                missing_prerequisites=string_tuple(
+                    raw_unit.get("missing_prerequisites", []), "missing_prerequisites"
+                ),
+                tacit_practices=string_tuple(
+                    raw_unit.get("tacit_practices", []), "tacit_practices"
+                ),
+                assumptions=string_tuple(raw_unit.get("assumptions", []), "assumptions"),
+                inferred_relations=string_tuple(
+                    raw_unit.get("inferred_relations", []), "inferred_relations"
+                ),
+                boundary_conditions=string_tuple(
+                    raw_unit.get("boundary_conditions", []), "boundary_conditions"
+                ),
+                alternatives=string_tuple(raw_unit.get("alternatives", []), "alternatives"),
+                changed_condition_examples=string_tuple(
+                    raw_unit.get("changed_condition_examples", []),
+                    "changed_condition_examples",
+                ),
+                uncertainties=string_tuple(
+                    raw_unit.get("uncertainties", []), "uncertainties"
+                ),
+            )
+        )
+    return DecompressionArtifact(
+        artifact_id=str(value.get("artifact_id", "")).strip(),
+        run_id=str(value.get("run_id", "")).strip(),
+        units=tuple(units),
+        schema_version=str(value.get("schema_version", "")),
     )
 
 

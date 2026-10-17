@@ -115,10 +115,22 @@ def test_http_agent_session_completes_without_internal_provider(tmp_path) -> Non
             if expected_stage == "stage_4_author_model":
                 claim["provenance"] = {"interpretation_id": f"http-lens-{index}"}
             claims.append(claim)
+        candidate = {"claims": claims, "gaps": [], "warnings": []}
+        if expected_stage == "stage_3_decompression":
+            candidate["decompression_units"] = [
+                {
+                    "unit_id": "stage3-unit-0",
+                    "explanation": "The claim depends on the cited article passage.",
+                    "claim_ids": [claims[0]["claim_id"]],
+                    "source_citations": [
+                        {"kind": "anchor", "identity": anchors[0]["anchor_id"]}
+                    ],
+                }
+            ]
         response = client.post(
             f"/v1/agent-sessions/{turn['run_id']}/turns",
             json={
-                "candidate": {"claims": claims, "gaps": [], "warnings": []},
+                "candidate": candidate,
                 "agent_name": "generic-http-agent",
                 "model": "external-test-model",
             },

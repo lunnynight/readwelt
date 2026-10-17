@@ -219,6 +219,84 @@ class StageInputState:
             raise ValueError("complete stage input cannot retain unresolved traversal state")
 
 
+def _validate_text_values(values: tuple[str, ...], field: str) -> None:
+    if any(not value.strip() for value in values):
+        raise ValueError(f"{field} entries must not be empty")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field} entries must be unique")
+
+
+@dataclass(frozen=True, slots=True)
+class DecompressionUnit:
+    unit_id: str
+    explanation: str
+    claim_ids: tuple[str, ...]
+    source_citations: tuple[SourceCitation, ...]
+    concepts_introduced: tuple[str, ...] = ()
+    concepts_assumed: tuple[str, ...] = ()
+    mechanism_steps: tuple[str, ...] = ()
+    dependencies: tuple[str, ...] = ()
+    missing_prerequisites: tuple[str, ...] = ()
+    tacit_practices: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    inferred_relations: tuple[str, ...] = ()
+    boundary_conditions: tuple[str, ...] = ()
+    alternatives: tuple[str, ...] = ()
+    changed_condition_examples: tuple[str, ...] = ()
+    uncertainties: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.unit_id.strip() or not self.explanation.strip():
+            raise ValueError("decompression unit id and explanation are required")
+        if not self.claim_ids or len(set(self.claim_ids)) != len(self.claim_ids):
+            raise ValueError("decompression unit claim ids must be non-empty and unique")
+        if not self.source_citations or len(set(self.source_citations)) != len(
+            self.source_citations
+        ):
+            raise ValueError("decompression unit source citations must be non-empty and unique")
+        source_kinds = {
+            SourceCitationKind.ANCHOR,
+            SourceCitationKind.UNIT,
+            SourceCitationKind.RANGE,
+            SourceCitationKind.ELEMENT,
+        }
+        if not any(citation.kind in source_kinds for citation in self.source_citations):
+            raise ValueError("decompression units require a direct source citation")
+        for field in (
+            "concepts_introduced",
+            "concepts_assumed",
+            "mechanism_steps",
+            "dependencies",
+            "missing_prerequisites",
+            "tacit_practices",
+            "assumptions",
+            "inferred_relations",
+            "boundary_conditions",
+            "alternatives",
+            "changed_condition_examples",
+            "uncertainties",
+        ):
+            _validate_text_values(getattr(self, field), field)
+
+
+@dataclass(frozen=True, slots=True)
+class DecompressionArtifact:
+    artifact_id: str
+    run_id: str
+    units: tuple[DecompressionUnit, ...]
+    schema_version: str = "decompression-artifact.v1"
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "decompression-artifact.v1":
+            raise ValueError(f"unsupported decompression artifact: {self.schema_version}")
+        if not self.artifact_id.strip() or not self.run_id.strip():
+            raise ValueError("decompression artifact and run ids are required")
+        if not self.units:
+            raise ValueError("decompression artifact requires at least one unit")
+        if len({unit.unit_id for unit in self.units}) != len(self.units):
+            raise ValueError("decompression unit ids must be unique")
+
+
 @dataclass(frozen=True, slots=True)
 class StageArtifact:
     artifact_id: str
@@ -234,6 +312,7 @@ class StageArtifact:
     content_digest: str
     provider_provenance: tuple[tuple[str, str], ...] = ()
     input_state: StageInputState | None = None
+    decompression_artifact: DecompressionArtifact | None = None
 
     def __post_init__(self) -> None:
         if not self.content_digest.startswith("sha256:"):
@@ -242,6 +321,28 @@ class StageArtifact:
             raise ValueError("artifact claims must belong to its stage")
         if any(gap.origin_stage is not self.stage for gap in self.gaps):
             raise ValueError("artifact gaps must belong to its stage")
+        if self.decompression_artifact is not None:
+            if self.stage is not ReadingStage.DECOMPRESSION:
+                raise ValueError("decompression artifacts belong to stage three")
+            if self.decompression_artifact.run_id != self.run_id:
+                raise ValueError("decompression artifact belongs to another run")
+            claims_by_id = {claim.claim_id: claim for claim in self.claims}
+            for unit in self.decompression_artifact.units:
+                unknown_claim_ids = set(unit.claim_ids) - set(claims_by_id)
+                if unknown_claim_ids:
+                    raise ValueError(
+                        f"decompression unit references unknown stage claims: "
+                        f"{sorted(unknown_claim_ids)}"
+                    )
+                cited_claims = {
+                    citation
+                    for claim_id in unit.claim_ids
+                    for citation in claims_by_id[claim_id].source_citations
+                }
+                if not set(unit.source_citations).issubset(cited_claims):
+                    raise ValueError(
+                        "decompression unit citations must be grounded by linked claims"
+                    )
 
     @property
     def accepted_claims(self) -> tuple[ReadingClaim, ...]:

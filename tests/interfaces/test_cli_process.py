@@ -46,7 +46,19 @@ def _candidate(turn: dict[str, Any]) -> dict[str, Any]:
         claims[0]["source_claim_ids"] = [evidence["upstream_claims"][0]["claim_id"]]
         for claim in claims[1:]:
             claim["source_claim_ids"] = [evidence["upstream_claims"][0]["claim_id"]]
-    return {"claims": claims, "gaps": [], "warnings": []}
+    candidate: dict[str, Any] = {"claims": claims, "gaps": [], "warnings": []}
+    if stage == "stage_3_decompression":
+        candidate["decompression_units"] = [
+            {
+                "unit_id": "stage3-unit-0",
+                "explanation": "The claim depends on the cited article passage.",
+                "claim_ids": [claims[0]["claim_id"]],
+                "source_citations": [
+                    {"kind": "anchor", "identity": anchors[0]["anchor_id"]}
+                ],
+            }
+        ]
+    return candidate
 
 
 def test_short_lived_cli_completes_agent_loop_and_retrieves_artifact(

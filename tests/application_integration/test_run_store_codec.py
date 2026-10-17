@@ -13,6 +13,8 @@ from readwelt.application.run_store_codec import (
     decode_stage_artifact,
 )
 from readwelt.domain import (
+    DecompressionArtifact,
+    DecompressionUnit,
     EpistemicStatus,
     LedgerDecision,
     ReadingClaim,
@@ -211,6 +213,57 @@ def test_stage_artifact_codec_roundtrips_typed_source_citations() -> None:
     assert decoded.claims[0].source_citations == (citation,)
 
 
+def test_decompression_artifact_codec_preserves_versioned_units_and_citations() -> None:
+    citation = SourceCitation(SourceCitationKind.ANCHOR, "anchor-decompression")
+    claim = ReadingClaim(
+        claim_id="stage_3_decompression:claim:1",
+        text="The concept depends on the stated prerequisite.",
+        stage=ReadingStage.DECOMPRESSION,
+        anchor_ids=(citation.identity,),
+        decision=LedgerDecision.ACCEPTED,
+        source_claim_ids=("stage_2_structure:claim:1",),
+        source_citations=(citation,),
+    )
+    unit = DecompressionUnit(
+        unit_id="du-1",
+        explanation="The prerequisite explains why the conclusion follows.",
+        claim_ids=(claim.claim_id,),
+        source_citations=(citation,),
+        concepts_assumed=("the prerequisite",),
+        mechanism_steps=("apply the prerequisite", "derive the conclusion"),
+        changed_condition_examples=("remove the prerequisite and reassess",),
+        uncertainties=("whether the source establishes the prerequisite",),
+    )
+    decompression = DecompressionArtifact(
+        artifact_id="decompression-artifact-1",
+        run_id="run-decompression",
+        units=(unit,),
+    )
+    artifact = StageArtifact(
+        artifact_id="stage-artifact-decompression",
+        run_id="run-decompression",
+        stage=ReadingStage.DECOMPRESSION,
+        claims=(claim,),
+        gaps=(),
+        warnings=(),
+        input_artifact_ids=("stage-2-artifact",),
+        provider="test",
+        model="test-v1",
+        status=EpistemicStatus.SUFFICIENT,
+        content_digest="sha256:" + "9" * 64,
+        decompression_artifact=decompression,
+    )
+
+    encoded = to_primitive(artifact)
+    assert isinstance(encoded, dict)
+    decoded = decode_stage_artifact(encoded)
+
+    assert decoded == artifact
+    assert decoded.decompression_artifact is not None
+    assert decoded.decompression_artifact.schema_version == "decompression-artifact.v1"
+    assert decoded.decompression_artifact.units[0].source_citations == (citation,)
+
+
 def test_historical_stage_claim_without_typed_citations_upgrades_from_anchors() -> None:
     payload = {
         "artifact_id": "artifact-legacy-citation",
@@ -243,3 +296,4 @@ def test_historical_stage_claim_without_typed_citations_upgrades_from_anchors() 
     assert decoded.claims[0].source_citations == (
         SourceCitation(SourceCitationKind.ANCHOR, "anchor-legacy"),
     )
+    assert decoded.decompression_artifact is None

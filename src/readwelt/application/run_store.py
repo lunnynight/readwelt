@@ -144,7 +144,13 @@ class ApplicationRunStore:
         reference = self._artifacts.put_json(
             artifact,
             artifact_type="stage_artifact",
-            schema_version="2" if artifact.input_state is not None else "1",
+            schema_version=(
+                "3"
+                if artifact.decompression_artifact is not None
+                else "2"
+                if artifact.input_state is not None
+                else "1"
+            ),
         )
         raw_artifacts = manifest.get("artifacts")
         if not isinstance(raw_artifacts, list):

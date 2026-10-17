@@ -9,6 +9,8 @@ from readwelt.domain.documents import (
 )
 from readwelt.domain.ids import stable_id
 from readwelt.domain.reading import (
+    DecompressionArtifact,
+    DecompressionUnit,
     EvidencePacket,
     ExternalEvidence,
     LedgerDecision,
@@ -35,6 +37,8 @@ from readwelt.domain.status import (
 )
 
 __all__ = [
+    "DecompressionArtifact",
+    "DecompressionUnit",
     "ArtifactRef",
     "ArtifactStatus",
     "DocumentSection",

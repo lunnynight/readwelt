@@ -39,7 +39,17 @@ def _candidate(request: StageRequest) -> dict[str, Any]:
         claim["source_claim_ids"] = [request.evidence_packet["upstream_claims"][0]["claim_id"]]
     if request.stage == "stage_4_author_model":
         claim["provenance"] = {"interpretation_id": "historical-lens"}
-    return {"claims": [claim], "gaps": [], "warnings": []}
+    candidate: dict[str, Any] = {"claims": [claim], "gaps": [], "warnings": []}
+    if request.stage == "stage_3_decompression":
+        candidate["decompression_units"] = [
+            {
+                "unit_id": "stage3-unit-0",
+                "explanation": "The stage claim depends on the article's stated prerequisite.",
+                "claim_ids": [claim["claim_id"]],
+                "source_citations": [{"kind": "anchor", "identity": anchor_id}],
+            }
+        ]
+    return candidate
 
 
 @pytest.mark.parametrize(

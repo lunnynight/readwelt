@@ -34,12 +34,8 @@ from .candidate_settlement import bind_stage_input as _bind_stage_input
 from .candidate_settlement import parse_claim as _parse_claim_impl
 from .candidate_settlement import parse_gap as _parse_gap_impl
 from .candidate_settlement import settle_candidate as _settle_candidate_impl
-from .policies import (
-    RESPONSE_SCHEMA as _RESPONSE_SCHEMA,
-)
-from .policies import (
-    STAGES as _STAGES,
-)
+from .policies import STAGES as _STAGES
+from .policies import response_schema_for_stage as _response_schema_for_stage
 from .request_factory import build_stage_request as _build_stage_request
 from .stage_results import add_entry_gaps as _add_entry_gaps_impl
 from .stage_results import build_bundle as _build_bundle
@@ -160,7 +156,10 @@ class SixStageReadingEngine:
                 )
                 if request_validator is not None:
                     request_validator(request, stage_view)
-                candidate = await self._provider.generate(request, _RESPONSE_SCHEMA)
+                candidate = await self._provider.generate(
+                    request,
+                    _response_schema_for_stage(stage),
+                )
                 presented_anchor_ids = _request_presented_anchor_ids(request)
                 try:
                     artifact = self._settle_candidate(
