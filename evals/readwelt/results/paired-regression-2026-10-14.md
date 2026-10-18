@@ -1,6 +1,6 @@
 # Paired regression: baseline vs revised Readwelt
 
-> **Historical record.** Generated on 2026-10-14 against a revision that predates the reader-centered Skill refocus (`883cf07`). It documents one paired comparison and its stated limits; it does not describe or evaluate the current `SKILL.md`.
+> **Recorded 2026-10-14.** One paired comparison of two Skill revisions at that time. The limits stated below still apply.
 
 - Baseline Skill: `ca3ac081:skills/readwelt/SKILL.md`
 - Revised Skill: working tree at test time
