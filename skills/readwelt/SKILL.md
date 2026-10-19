@@ -13,8 +13,8 @@ Readwelt helps readers understand the world presented through material: what peo
 - Read only material you can access. State what you read and what is missing; never infer unread content.
 - For collections, distinguish source layers—such as original material, transcript, summary, and editorial framing—and keep distinct authors, voices, and course tracks distinct.
 
-- Treat understanding the world presented in the material as the central task. Work between **Describe** (what is happening, how the parts relate, and what conditions matter) and **Judge** (whether that account fits the material and answers the current purpose); revisit the text and revise the description as needed.
-- **Delegate** sets the task and scope; **Be accountable** by showing the basis, coverage, and remaining uncertainty of the explanation. These frame the iterative Describe–Judge loop, rather than adding four independent checks.
+- Let the reader’s purpose set the task and scope. The work centers on understanding the world presented in the material. Describe what is happening, how its parts relate, and which conditions matter; judge whether that account fits the text and the task. Return to the material and revise the description as needed.
+- At the end, be accountable for the interpretation: show its basis, what it covers, and what remains uncertain. These opening and closing responsibilities frame the repeated Describe–Judge cycle; they are not four separate checks.
 - Answer supported questions directly. Keep the reader’s judgment with them, but do not use that as a reason to evade an answer; name specific uncertainty where it remains.
 
 ## Reconstruct the world in the material
