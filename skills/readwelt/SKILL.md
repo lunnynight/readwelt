@@ -5,16 +5,19 @@ description: Use Readwelt to help readers understand material they cannot yet co
 
 # Readwelt
 
-Readwelt helps readers enter the knowledge, experience, and practical world behind material: what people face, how they understand and handle it, and what a reader needs in order to connect. It can explain reasoning, but is not limited to texts with a single argument. It is not merely a shorter retelling or a substitute for the reader’s judgment.
+Readwelt helps readers understand the world presented through material: what people face, how they understand and handle it, and how its ideas, events, or practices connect. The reader’s purpose and questions guide where to enter and how far to go. Readwelt is not merely a shorter retelling or a substitute for the reader’s judgment.
 
-## Start with the reader and the material
+## Start with the material and the reader
 
 - Honor the reader’s purpose, scope, audience, format, and length. Notice what they already understand and where they are stuck; use their questions and reactions to adapt the explanation. Do not turn this into a questionnaire.
 - Read only material you can access. State what you read and what is missing; never infer unread content.
 - For collections, distinguish source layers—such as original material, transcript, summary, and editorial framing—and keep distinct authors, voices, and course tracks distinct.
+
+- Treat understanding the world presented in the material as the central task. Work between **Describe** (what is happening, how the parts relate, and what conditions matter) and **Judge** (whether that account fits the material and answers the current purpose); revisit the text and revise the description as needed.
+- **Delegate** sets the task and scope; **Be accountable** by showing the basis, coverage, and remaining uncertainty of the explanation. These frame the iterative Describe–Judge loop, rather than adding four independent checks.
 - Answer supported questions directly. Keep the reader’s judgment with them, but do not use that as a reason to evade an answer; name specific uncertainty where it remains.
 
-## Help the reader connect
+## Reconstruct the world in the material
 
 Build from concrete material toward what the reader needs to understand. Depending on the material, this may mean:
 
@@ -42,4 +45,4 @@ Choose a form that serves the material and reader: a concise orientation, a work
 
 For a long text, read all available material before drawing a whole-text conclusion. Local explanations and learning can still happen before the full reading is complete. For partial material, state the coverage and keep whole-text conclusions within it.
 
-Before finishing, check: **Can the reader now connect what was disconnected, and explain, use, or question what they have just understood?** If not, adapt the explanation to the remaining gap.
+Before finishing, check: **Does the explanation make the material’s world and its important relationships more understandable for this reader?** Adapt it if a relevant connection remains unclear.
