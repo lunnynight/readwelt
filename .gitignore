@@ -1,7 +1,7 @@
-.venv/
+# Python caches
 __pycache__/
 *.py[cod]
-*.pdb
+.venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -12,26 +12,10 @@ build/
 target/
 *.egg-info/
 
-# Local analysis and internal design material
-**/.sentrux/
-!/.sentrux/
-/.sentrux/*
-!/.sentrux/baseline.json
-!/.sentrux/rules.toml
-.understand-anything/
-.research-checkouts/
-.research-inputs/
-design/
-research/
-
-# Readwelt local projects and model/runtime caches
-.readwelt/
-.readwelt-*/
-/.sentrux/agent-sessions/
-
-# Editor and OS files
-.DS_Store
-Thumbs.db
+# Local agent and editor state
+.omp/
+.gstack/
 .idea/
 .vscode/
-.gstack/
+.DS_Store
+Thumbs.db

@@ -10,10 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -23,33 +21,36 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy,rustfmt
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
-
-      - name: Install project
-        run: uv sync --extra all --locked
-
-      - name: Check Python
+      - name: Validate skill and evaluation cases
         run: |
-          uv run ruff check .
-          uv run ruff format --check src tests
-          uv run mypy src/readwelt
+          python - <<'PY'
+          import json
+          import pathlib
+          import sys
 
-      - name: Test Python
-        run: uv run pytest
+          root = pathlib.Path(".")
+          skill = (root / "skills/readwelt/SKILL.md").read_text(encoding="utf-8")
+          if not skill.startswith("---\n"):
+              sys.exit("SKILL.md must start with YAML frontmatter")
+          frontmatter = skill.split("---", 2)[1]
+          for field in ("name:", "description:"):
+              if field not in frontmatter:
+                  sys.exit(f"SKILL.md frontmatter is missing {field}")
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
+          cases = json.loads((root / "evals/readwelt/cases.json").read_text(encoding="utf-8"))
+          if not cases.get("cases"):
+              sys.exit("eval cases must not be empty")
+          for case in cases["cases"]:
+              for field in ("id", "source", "prompt", "expectations"):
+                  if field not in case:
+                      sys.exit(f"eval case missing {field}: {case.get('id')}")
+              if not (root / "evals/readwelt" / case["source"]).is_file():
+                  sys.exit(f"eval source is missing: {case['source']}")
 
-      - name: Test Rust
-        run: cargo test --workspace --locked
-
-      - name: Check Rust
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+          compile(
+              (root / "evals/readwelt/check_quotes.py").read_text(encoding="utf-8"),
+              "check_quotes.py",
+              "exec",
+          )
+          print(f"validated {len(cases['cases'])} eval cases")
+          PY

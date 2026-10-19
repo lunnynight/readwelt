@@ -1,1 +1,0 @@
-"""Interface adapter tests."""

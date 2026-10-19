@@ -1,5 +1,7 @@
 # Paired regression: baseline vs revised Readwelt
 
+> **Recorded 2026-10-14.** One paired comparison of two Skill revisions at that time. The limits stated below still apply.
+
 - Baseline Skill: `ca3ac081:skills/readwelt/SKILL.md`
 - Revised Skill: working tree at test time
 - Model: `default`, stateless; same eight prompts and source fixtures, run once per version

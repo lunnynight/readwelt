@@ -2,90 +2,58 @@
 
 # Readwelt
 
-### 先读懂文章，再展开文章压缩掉的世界。
+### 帮读者真正读懂材料，而不只是读完。
 
-面向读者的 AI 深度阅读工具：恢复文章的论点与推理，补足理解所需的背景，检验结论边界，再提取可迁移的方法。
+面向读者的 AI 阅读方法与 Skill：按你的目的和卡点，展开材料压缩掉的知识、经验、实践与推理。
 
 [![CI](https://github.com/lunnynight/readwelt/actions/workflows/ci.yml/badge.svg)](https://github.com/lunnynight/readwelt/actions/workflows/ci.yml)
-[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-C9A227.svg)](LICENSE)
 
 </div>
 
 ## Readwelt 做什么
 
-Readwelt 不是把文章缩短，而是帮助读者弄清：作者提出了什么主张、论据如何支持它、哪些前提被省略，以及结论在什么条件下成立。
+Readwelt 不是把材料缩短，而是帮你把还连不起来的东西连起来：它面对的对象可以是一篇文章、一段课程、一次对话或一份实践记录。
 
-阅读顺序：
+它会按你的目的和已有理解选择阅读动作，例如：
 
-```text
-恢复文章主张与关系 → 解压概念和背景 → 重建作者的问题世界 → 检验边界 → 提炼可迁移方法
-```
+- 还原材料面对的处境、人物、对象与实践条件；
+- 让概念之间的依赖、流程的推进、对话的转折或论证的支撑关系变得可见；
+- 补足阻挡你理解的概念、假设、背景和前置知识；
+- 区分已经成立的内容、仍不确定的内容，以及批评或外部证据会改变什么；
+- 说明哪些内容可以迁移到新情境，哪些条件一变就会失效。
 
-文章自身的理论主张、论证结构、方法和实践目的分开处理。不能用一个有依据的写作目的，替代全文的思想内容。
+这些是可选择的阅读动作，不是固定顺序，也不是统一报告模板。材料只有一个论点时不必硬凑结构；你只需要三句话摘要时，也不会被套上完整分析。
 
 ## 使用 Readwelt Skill
 
-如果你的 AI 助手支持 Agent Skills，可直接使用 [`skills/readwelt/SKILL.md`](skills/readwelt/SKILL.md)。把文章或文本文件交给助手，并要求“请帮我读懂这篇文章”。纯 Skill 阅读不需要启动 Readwelt 服务或安装 CLI。
+[`skills/readwelt/SKILL.md`](skills/readwelt/SKILL.md) 是唯一的产品入口。把材料交给支持 Agent Skills 的助手，并说明你想解决的理解问题即可，不需要安装运行时、启动服务或配置模型。
 
-## 使用 CLI
+安装方式取决于你的宿主：将 `skills/readwelt/` 放入宿主的技能目录，或直接让助手读取该文件。
 
-### 从源码安装
+示例请求：
 
-当前仓库提供源码运行方式；需要 [uv](https://docs.astral.sh/uv/)、Python 3.13 和 Rust stable：
-
-```powershell
-git clone https://github.com/lunnynight/readwelt.git
-cd readwelt
-uv sync
+```text
+请用 Readwelt 帮我读懂这份材料：我卡在它为什么这样组织论证。
 ```
 
-查看命令：
-
-```powershell
-uv run readwelt --help
+```text
+这段对话里双方到底在争什么？我只需要能复述清楚，不需要完整报告。
 ```
 
-Readwelt 可使用本地或远程 OpenAI-compatible 模型，或复用 Claude Code。模型与认证通过对应环境变量或宿主配置提供；不要把 API key 写进文章文件或提交到仓库。
+## 评测
 
-本地模型示例：
-
-```powershell
-$env:READWELT_LOCAL_MODEL = "your-model"
-$env:READWELT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1"
-uv run readwelt read .\article.md --provider local --json
-```
-
-远程 API 示例：
+[`evals/readwelt/`](evals/readwelt/) 保存阅读行为的案例、评分标准与对比方法，覆盖范围声明、说话者归属、条件保持、普通摘要请求等容易出错的情形。
 
 ```powershell
-$env:READWELT_API_MODEL = "your-model"
-$env:READWELT_API_KEY = "your-key"
-$env:READWELT_API_BASE_URL = "https://api.example.com/v1"
-uv run readwelt read .\article.md --provider api --json
+python evals/readwelt/check_quotes.py <source> <report>
 ```
 
-运行环境自检：
-
-```powershell
-uv run readwelt doctor
-```
-
-`read` 直接开始阅读；`import` 与 `prepare` 用于需要显式管理文档和准备结果的工作流。其他子命令见 `--help`。
-
-## 开发
-
-```powershell
-uv sync --group dev
-uv run pytest
-uv run ruff check .
-```
+该脚本只检查显式引文是否与原文逐字对应，不判断含义、归属或推论是否成立。
 
 ## 项目内容
 
-- `skills/readwelt/`：可直接交给兼容 Agent Skills 的助手使用的阅读 Skill。
-- `src/readwelt/`、`crates/`：CLI、Python 接口与 Rust 核心实现。
-- `evals/readwelt/`：阅读行为的测试案例、评分标准和对比方法。
-- `docs/architecture/`：面向贡献者的架构说明。
-
+- `skills/readwelt/`：产品本体，即 Agent Skill。
+- `evals/readwelt/`：行为评测案例、评分标准与结果记录。
+- `CONTEXT.md`：阅读领域的术语与边界。
 Readwelt 采用 MIT 许可证，详见 [LICENSE](LICENSE)。第三方代码与材料说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
